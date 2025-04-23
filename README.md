@@ -1,104 +1,123 @@
-<a href="https://demo-nextjs-with-supabase.vercel.app/">
-  <img alt="Next.js and Supabase Starter Kit - the fastest way to build apps with Next.js and Supabase" src="https://demo-nextjs-with-supabase.vercel.app/opengraph-image.png">
-  <h1 align="center">Next.js and Supabase Starter Kit</h1>
-</a>
+# 🚽 Toilet Radar
 
-<p align="center">
- The fastest way to build apps with Next.js and Supabase
-</p>
+Find nearby public toilets in Switzerland.
 
-<p align="center">
-  <a href="#features"><strong>Features</strong></a> ·
-  <a href="#demo"><strong>Demo</strong></a> ·
-  <a href="#deploy-to-vercel"><strong>Deploy to Vercel</strong></a> ·
-  <a href="#clone-and-run-locally"><strong>Clone and run locally</strong></a> ·
-  <a href="#feedback-and-issues"><strong>Feedback and issues</strong></a>
-  <a href="#more-supabase-examples"><strong>More Examples</strong></a>
-</p>
-<br/>
+This project uses Next.js, Supabase (with PostGIS), and Leaflet to display public toilet locations on a map.
 
 ## Features
 
-- Works across the entire [Next.js](https://nextjs.org) stack
-  - App Router
-  - Pages Router
-  - Middleware
-  - Client
-  - Server
-  - It just works!
-- supabase-ssr. A package to configure Supabase Auth to use cookies
-- Styling with [Tailwind CSS](https://tailwindcss.com)
-- Components with [shadcn/ui](https://ui.shadcn.com/)
-- Optional deployment with [Supabase Vercel Integration and Vercel deploy](#deploy-your-own)
-  - Environment variables automatically assigned to Vercel project
+*   Displays public toilet locations on an interactive map (Leaflet).
+*   Option to find the nearest toilets based on the user's current location.
+*   Displays details about toilets (address, accessibility, cost, hours, etc.) when available.
+*   Data sourced from OpenStreetMap and various Swiss city open data portals.
+*   Uses Supabase for the backend database and geospatial queries.
+*   Built with Next.js (App Router) and TypeScript.
 
-## Demo
+## Data Sources & Processing
 
-You can view a fully working demo at [demo-nextjs-with-supabase.vercel.app](https://demo-nextjs-with-supabase.vercel.app/).
+The application aggregates toilet data from multiple sources:
 
-## Deploy to Vercel
+1.  **OpenStreetMap (OSM):**
+    *   The primary source for broad coverage.
+    *   Data is fetched using the Overpass API (`scripts/populateFromOSM.mjs`).
+    *   This script queries for nodes tagged `amenity=toilets` across Switzerland.
+    *   Relevant OSM tags (`name`, `wheelchair`, `fee`, `opening_hours`, `description`, etc.) are mapped to the database schema.
+2.  **City Open Data:**
+    *   Specific datasets provided by Swiss cities (Zurich, Basel, Geneva, Lucerne) are included in the `/geo` directory.
+    *   Dedicated scripts in `/scripts` parse these specific formats (GeoJSON, CSV) and import them into the database:
+        *   `populateToilets.mjs`: Zurich (GeoJSON)
+        *   `importBaselToilets.mjs`: Basel (JSON)
+        *   `importGenevaToilets.mjs`: Geneva (CSV with Swiss LV95 coordinates, requires `proj4` for conversion).
+        *   `importLucerneToilets.mjs`: Lucerne (JSON)
+3.  **Address Enrichment:**
+    *   Since OSM data often lacks full addresses for toilets, the `scripts/enrichAddresses.mjs` script can be run *after* the initial import.
+    *   This script queries the database for toilets missing address information.
+    *   It uses the free [Nominatim (OSM) reverse geocoding service](https://nominatim.org/release-docs/latest/api/Reverse/) to find the nearest address based on latitude/longitude.
+    *   **Important:** This script respects Nominatim's usage policy (max 1 request/second) and requires a valid `User-Agent` to be set within the script.
 
-Vercel deployment will guide you through creating a Supabase account and project.
+## Database (Supabase)
 
-After installation of the Supabase integration, all relevant environment variables will be assigned to the project so the deployment is fully functioning.
+*   A PostgreSQL database hosted on Supabase.
+*   Uses the **PostGIS** extension for storing geographic locations (`geom` column) and performing spatial queries.
+*   The main table is `toilets`, storing details about each location.
+*   A database function (RPC) `find_nearest_toilets(user_lat, user_lng, radius_meters, result_limit)` is used to efficiently find toilets near a given point, calculating the distance on the server.
+*   See `supabase.md` for detailed schema and function definitions (ensure this file is kept up-to-date).
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fnext.js%2Ftree%2Fcanary%2Fexamples%2Fwith-supabase&project-name=nextjs-with-supabase&repository-name=nextjs-with-supabase&demo-title=nextjs-with-supabase&demo-description=This+starter+configures+Supabase+Auth+to+use+cookies%2C+making+the+user%27s+session+available+throughout+the+entire+Next.js+app+-+Client+Components%2C+Server+Components%2C+Route+Handlers%2C+Server+Actions+and+Middleware.&demo-url=https%3A%2F%2Fdemo-nextjs-with-supabase.vercel.app%2F&external-id=https%3A%2F%2Fgithub.com%2Fvercel%2Fnext.js%2Ftree%2Fcanary%2Fexamples%2Fwith-supabase&demo-image=https%3A%2F%2Fdemo-nextjs-with-supabase.vercel.app%2Fopengraph-image.png)
+## Frontend (Next.js/React)
 
-The above will also clone the Starter kit to your GitHub, you can clone that locally and develop locally.
+*   The map interface is built using React and the `react-leaflet` library.
+*   `components/ClientMapWrapper.tsx` handles:
+    *   Requesting user geolocation.
+    *   Calling the `find_nearest_toilets` Supabase RPC function.
+    *   Managing state for user location, nearby toilets, loading, and errors.
+*   `components/ToiletMap.tsx` handles:
+    *   Rendering the Leaflet map container and tile layer.
+    *   Displaying markers for the user's location and nearby toilets (passed as props from `ClientMapWrapper`).
+    *   Displaying popups with toilet details when markers are clicked.
 
-If you wish to just develop locally and not deploy to Vercel, [follow the steps below](#clone-and-run-locally).
+## Local Development Setup
 
-## Clone and run locally
+1.  **Clone the Repository:**
+    ```bash
+    git clone <your-repo-url>
+    cd toilet-radar
+    ```
 
-1. You'll first need a Supabase project which can be made [via the Supabase dashboard](https://database.new)
+2.  **Install Dependencies:**
+    ```bash
+    npm install
+    # or
+    yarn install
+    # or
+    pnpm install
+    ```
 
-2. Create a Next.js app using the Supabase Starter template npx command
+3.  **Set up Supabase Project:**
+    *   Create a project on [Supabase](https://supabase.com/).
+    *   In the Supabase dashboard, go to `Database` -> `Extensions` and enable `postgis`.
+    *   Go to the `SQL Editor` and run the SQL commands found in `supabase.md` (or your setup script) to create the `toilets` table and the `find_nearest_toilets` function.
 
-   ```bash
-   npx create-next-app --example with-supabase with-supabase-app
-   ```
+4.  **Configure Environment Variables:**
+    *   Rename `.env.local.example` to `.env.local`.
+    *   Find your Supabase project's URL and `anon` key in `Project Settings` -> `API`.
+    *   Find your Supabase project's `service_role` key in `Project Settings` -> `API` (keep this secret!).
+    *   Update `.env.local`:
+        ```dotenv
+        NEXT_PUBLIC_SUPABASE_URL=[INSERT SUPABASE PROJECT URL]
+        NEXT_PUBLIC_SUPABASE_ANON_KEY=[INSERT SUPABASE PROJECT ANON KEY]
+        SUPABASE_SERVICE_KEY=[INSERT SUPABASE SERVICE ROLE KEY]
+        # Optional: Add API key if using a commercial geocoder in enrichAddresses.mjs
+        # REVERSE_GEOCODING_API_KEY=
+        ```
 
-   ```bash
-   yarn create next-app --example with-supabase with-supabase-app
-   ```
+5.  **Populate the Database (Optional but Recommended):**
+    *   Ensure the `toilets` table is empty if you want a clean import.
+        ```sql
+        -- Run in Supabase SQL Editor
+        DELETE FROM toilets;
+        ```
+    *   Run the import scripts. Start with OSM data:
+        ```bash
+        node scripts/populateFromOSM.mjs
+        ```
+    *   Optionally run city-specific scripts (check scripts for dependencies like `proj4`):
+        ```bash
+        # node scripts/importGenevaToilets.mjs 
+        # node scripts/importBaselToilets.mjs
+        # ...etc
+        ```
+    *   Optionally run the address enrichment script (requires configuring User-Agent within the script):
+        ```bash
+        # Ensure User-Agent is set in enrichAddresses.mjs first!
+        # node scripts/enrichAddresses.mjs 
+        ```
 
-   ```bash
-   pnpm create next-app --example with-supabase with-supabase-app
-   ```
-
-3. Use `cd` to change into the app's directory
-
-   ```bash
-   cd with-supabase-app
-   ```
-
-4. Rename `.env.example` to `.env.local` and update the following:
-
-   ```
-   NEXT_PUBLIC_SUPABASE_URL=[INSERT SUPABASE PROJECT URL]
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=[INSERT SUPABASE PROJECT API ANON KEY]
-   ```
-
-   Both `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` can be found in [your Supabase project's API settings](https://app.supabase.com/project/_/settings/api)
-
-5. You can now run the Next.js local development server:
-
-   ```bash
-   npm run dev
-   ```
-
-   The starter kit should now be running on [localhost:3000](http://localhost:3000/).
-
-6. This template comes with the default shadcn/ui style initialized. If you instead want other ui.shadcn styles, delete `components.json` and [re-install shadcn/ui](https://ui.shadcn.com/docs/installation/next)
-
-> Check out [the docs for Local Development](https://supabase.com/docs/guides/getting-started/local-development) to also run Supabase locally.
-
-## Feedback and issues
-
-Please file feedback and issues over on the [Supabase GitHub org](https://github.com/supabase/supabase/issues/new/choose).
-
-## More Supabase examples
-
-- [Next.js Subscription Payments Starter](https://github.com/vercel/nextjs-subscription-payments)
-- [Cookie-based Auth and the Next.js 13 App Router (free course)](https://youtube.com/playlist?list=PL5S4mPUpp4OtMhpnp93EFSo42iQ40XjbF)
-- [Supabase Auth and the Next.js App Router](https://github.com/supabase/supabase/tree/master/examples/auth/nextjs)
+6.  **Run the Development Server:**
+    ```bash
+    npm run dev
+    # or
+    yarn dev
+    # or
+    pnpm dev
+    ```
+    The application should now be running on [http://localhost:3000](http://localhost:3000).

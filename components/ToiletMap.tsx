@@ -90,7 +90,7 @@ export default function ToiletMap({ userLocation }: ToiletMapProps) {
     <MapContainer center={mapCenter} zoom={mapZoom} style={{ height: '90vh', width: '100%' }}>
       <ChangeView center={mapCenter} zoom={mapZoom} />
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors & ZüriWC Data' // Added data attribution
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       {userLocation && (
@@ -102,42 +102,57 @@ export default function ToiletMap({ userLocation }: ToiletMapProps) {
         </Marker>
       )}
       {toilets.map(toilet => {
-        // Construct Google Maps link (only if address exists)
-        const googleMapsQuery = toilet.address ? encodeURIComponent(toilet.address) : null;
-        const googleMapsLink = googleMapsQuery ? `https://www.google.com/maps/search/?api=1&query=${googleMapsQuery}` : null;
+        // Construct Google Maps link for Address Search
+        const googleMapsAddressLink = toilet.address 
+            ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(toilet.address)}` 
+            : null;
+            
+        // Construct Google Maps link for Lat/Lng Coordinates
+        const googleMapsCoordsLink = `https://www.google.com/maps?q=${toilet.lat},${toilet.lng}`;
 
         return toilet.lat && toilet.lng && (
-          <Marker key={toilet.id} position={[toilet.lat, toilet.lng]} icon={toiletIcon}> 
-            <Popup>
-              <div className="font-sans"> 
-                <strong className="text-lg">{toilet.name || 'Unnamed Toilet'}</strong><br />
-                {/* Display address and link */} 
-                {toilet.address && googleMapsLink ? (
-                  <a 
-                    href={googleMapsLink} 
-                    target="_blank" // Open in new tab
-                    rel="noopener noreferrer" // Security best practice
-                    className="text-xs text-blue-600 hover:underline block mb-1"
-                  >
-                    {toilet.address}
-                  </a>
-                ) : toilet.address ? (
-                  <span className="text-xs text-gray-700 block mb-1">{toilet.address}</span>
-                ) : null}
-                <span className="text-sm">
-                  {toilet.accessible === null 
-                    ? 'Accessibility unknown' 
-                    : toilet.accessible 
-                      ? '♿ Accessible' 
-                      : '🚫 Not Accessible'}
-                </span>
-                <br />
-                <small className="text-xs text-gray-600">
-                  Hours: {toilet.open_hours || 'N/A'}
-                </small>
-              </div>
-            </Popup>
-          </Marker>
+          <Marker key={toilet.id} position={[toilet.lat, toilet.lng]} icon={toiletIcon}>
+             <Popup>
+               <div className="text-sm font-sans max-w-xs"> 
+                 <h3 className="font-bold text-base mb-1">{toilet.name || 'Public Toilet'}</h3>
+                 
+                 {/* Address Link (if address exists) */}
+                 {toilet.address && googleMapsAddressLink && (
+                     <a 
+                       href={googleMapsAddressLink} 
+                       target="_blank" 
+                       rel="noopener noreferrer"
+                       title="Search Address on Google Maps"
+                       className="text-xs text-blue-600 hover:underline block mb-1 break-words"
+                     >
+                       {toilet.address}
+                     </a>
+                 )}
+                 
+                 {/* Coordinates Link */} 
+                 <a 
+                   href={googleMapsCoordsLink} 
+                   target="_blank" 
+                   rel="noopener noreferrer"
+                   title="View exact coordinates on Google Maps"
+                   className="text-xs text-blue-600 hover:underline block mb-1"
+                 >
+                   View Coordinates ({toilet.lat.toFixed(5)}, {toilet.lng.toFixed(5)})
+                 </a>
+                 
+                 {/* ... (rest of the info: city, type, status, etc.) ... */}
+                 {toilet.address && 
+                   <p className="text-xs text-gray-600"><span className="font-semibold">Address:</span> {toilet.address}</p>}
+                 {toilet.accessible === null 
+                   ? <p className="text-xs text-gray-600"><span className="font-semibold">Accessibility:</span> Unknown</p>
+                   : toilet.accessible 
+                     ? <p className="text-xs text-gray-600"><span className="font-semibold">Accessibility:</span> ♿ Accessible</p>
+                     : <p className="text-xs text-gray-600"><span className="font-semibold">Accessibility:</span> 🚫 Not Accessible</p>}
+                 {toilet.open_hours && 
+                   <p className="text-xs text-gray-600"><span className="font-semibold">Hours:</span> {toilet.open_hours}</p>}
+               </div>
+             </Popup>
+           </Marker>
         )
        }
       )}
