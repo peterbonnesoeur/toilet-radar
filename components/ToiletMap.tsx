@@ -1,6 +1,6 @@
 'use client' // Add this directive for client-side hooks
 
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/utils/supabase/client' // Adjusted import path
 import L from 'leaflet'; // Import Leaflet library for custom icons if needed
@@ -18,6 +18,26 @@ type Toilet = {
   created_at: string
 }
 
+// Define UserLocation type
+type UserLocation = {
+  latitude: number;
+  longitude: number;
+} | null;
+
+// Define props interface including userLocation
+interface ToiletMapProps {
+  userLocation: UserLocation;
+}
+
+// Component to update map view when center or zoom changes
+const ChangeView = ({ center, zoom }: { center: L.LatLngExpression, zoom: number }) => {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, zoom);
+  }, [center, zoom, map]);
+  return null;
+};
+
 // Define the custom toilet icon
 const toiletIcon = L.icon({
     iconUrl: "/toilet-icon.png", // Path to your custom icon in the public folder
@@ -30,7 +50,21 @@ const toiletIcon = L.icon({
     // shadowAnchor: [12, 41]
 });
 
-export default function ToiletMap() {
+// Define a custom icon for the user
+const userIcon = new L.Icon({
+    iconUrl: '/user-location-marker.png', // Use path from /public
+    iconSize: [25, 31],
+    iconAnchor: [12, 31],
+    popupAnchor: [1, -34],
+    shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
+    shadowSize: [31, 31]
+});
+
+const defaultCenter: L.LatLngExpression = [47.3769, 8.5417]; // Default to Zurich center
+const defaultZoom = 13;
+
+// Update component to accept userLocation prop
+export default function ToiletMap({ userLocation }: ToiletMapProps) {
   const [toilets, setToilets] = useState<Toilet[]>([])
   const supabase = createClient() // Initialize Supabase client
 
@@ -45,16 +79,28 @@ export default function ToiletMap() {
     }
     fetchToilets()
   }, [supabase]) // Add supabase as a dependency
-
-  // Default center coordinates (Zurich)
-  const defaultCenter: [number, number] = [47.3769, 8.5417];
+  
+  // Determine map center and zoom based on user location prop
+  const mapCenter: L.LatLngExpression = userLocation
+    ? [userLocation.latitude, userLocation.longitude]
+    : defaultCenter;
+  const mapZoom = userLocation ? 15 : defaultZoom;
 
   return (
-    <MapContainer center={defaultCenter} zoom={13} style={{ height: '90vh', width: '100%' }}>
+    <MapContainer center={mapCenter} zoom={mapZoom} style={{ height: '90vh', width: '100%' }}>
+      <ChangeView center={mapCenter} zoom={mapZoom} />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors & ZüriWC Data' // Added data attribution
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      {userLocation && (
+        <Marker
+          position={[userLocation.latitude, userLocation.longitude]}
+          icon={userIcon}
+        >
+          <Popup>Your current location</Popup>
+        </Marker>
+      )}
       {toilets.map(toilet => {
         // Construct Google Maps link (only if address exists)
         const googleMapsQuery = toilet.address ? encodeURIComponent(toilet.address) : null;

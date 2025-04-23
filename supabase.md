@@ -58,7 +58,15 @@ A table containing rows with the following columns for each toilet found within 
 | `lat`     | `double precision` | Latitude of the toilet.                                    |
 | `lng`     | `double precision` | Longitude of the toilet.                                   |
 | `address` | `text`             | Address of the toilet.                                     |
+| `accessible` | `boolean`        | Whether the toilet is wheelchair accessible.               |
+| `is_free` | `boolean`          | Whether the toilet is free to use (null if unknown).       |
+| `type`    | `text`             | The type or category of the toilet.                        |
+| `status`  | `text`             | Operational status (e.g., 'in Betrieb', 'geschlossen').    |
+| `notes`   | `text`             | Additional notes or comments.                              |
+| `city`    | `text`             | The city the toilet is located in.                         |
+| `open_hours` | `text`           | Opening hours information.                                 |
 | `distance`| `double precision` | Calculated distance in **meters** from the user's location. |
+| `created_at`| `timestamp with time zone` | Timestamp when the record was created.                    |
 
 **Usage Example (from Client-Side JS):**
 
