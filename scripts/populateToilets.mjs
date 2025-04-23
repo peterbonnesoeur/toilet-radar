@@ -54,15 +54,37 @@ async function populateDatabase() {
       return null; // Skip entries without valid coordinates
     }
 
-    const name = props?.name || props?.adresse || 'Unnamed Toilet'; // Use address if name is missing
+    const name = props?.name || props?.adresse || 'Unnamed Toilet';
     const lng = coords[0];
     const lat = coords[1];
-    // Check if the category indicates accessibility
     const accessible = props?.kategorie?.toLowerCase().includes('rollstuhlgängig') || false;
-    const open_hours = props?.oeffnungsz || null; // Use null if undefined
-    const address = props?.adresse || null; // <-- Add this line to get the address
-    // Create PostGIS geometry string
-    const geomString = (lat && lng) ? `SRID=4326;POINT(${lng} ${lat})` : null;
+    const open_hours = props?.oeffnungsz || null;
+    const address = props?.adresse || null;
+    const geomString = (lat && lng) ? `POINT(${lng} ${lat})` : null;
+
+    const gebuehrenText = (props?.gebuehren || '').toLowerCase();
+    let isFree = null; 
+    if (gebuehrenText.includes('kostenlos') || gebuehrenText.includes('gratis')) {
+      isFree = true;
+    } else if (gebuehrenText.includes('gebühr') || gebuehrenText.includes('fr.')) {
+      isFree = false;
+    }
+
+    const type = props?.kategorie || 'Unbekannt'; 
+    
+    let status = 'in Betrieb'; // Default to active
+    const oeffnungszText = (props?.oeffnungsz || '').toLowerCase();
+    if (oeffnungszText.includes('winterbetrieb') || oeffnungszText.includes('geschlossen')) {
+        status = 'Eingeschränkt' // Or 'geschlossen' depending on interpretation
+    }
+
+    const notesParts = [];
+    if (props?.bemerkung) notesParts.push(`Bemerkung: ${props.bemerkung}`);
+    if (props?.kommentar) notesParts.push(`Kommentar: ${props.kommentar}`);
+    if (props?.infrastruktur && props.infrastruktur !== ';NULL') notesParts.push(`Infrastruktur: ${props.infrastruktur.replace(/^;/,'')}`); // Clean leading ;
+    if (props?.standort) notesParts.push(`Standort: ${props.standort}`);
+    if (props?.www) notesParts.push(`WWW: ${props.www}`);
+    const notes = notesParts.join(' | ') || null;
 
     return {
       name: name,
@@ -70,9 +92,13 @@ async function populateDatabase() {
       lng: lng,
       accessible: accessible,
       open_hours: open_hours,
-      address: address, // <-- Add address to the object being inserted
-      geom: geomString // <-- Add geom value for insertion
-      // id and created_at will be handled by the database defaults
+      address: address,
+      geom: geomString,
+      is_free: isFree,
+      type: type,
+      status: status,
+      notes: notes,
+      city: 'Zurich',
     };
   }).filter(toilet => toilet !== null); // Remove null entries
 
