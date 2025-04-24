@@ -54,7 +54,7 @@ const toiletIcon = L.icon({
 
 // Define a larger version of the toilet icon for the selected state
 const selectedToiletIcon = L.icon({
-    iconUrl: "/premium-toilet.png",
+    iconUrl: "/premium_toilet.png",
     iconSize: [48, 48], // Larger size
     iconAnchor: [24, 48], // Adjusted anchor
     popupAnchor: [0, -48], // Adjusted popup anchor
