@@ -1,6 +1,6 @@
 'use client' // Add this directive for client-side hooks
 
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/utils/supabase/client' // Adjusted import path
 import L from 'leaflet'; // Import Leaflet library for custom icons if needed
@@ -40,7 +40,7 @@ const ChangeView = ({ center, zoom }: { center: L.LatLngExpression, zoom: number
 
 // Define the custom toilet icon
 const toiletIcon = L.icon({
-    iconUrl: "/toilet-icon.png", // Path to your custom icon in the public folder
+    iconUrl: "/toilet.png", // Path to your custom icon in the public folder
     // iconRetinaUrl: "/toilet-icon-2x.png", // Optional: Add if you have a retina version
     iconSize: [32, 32],    // Adjust size as needed [width, height]
     iconAnchor: [16, 32],   // Point of the icon which will correspond to marker's location [width/2, height]
@@ -50,9 +50,18 @@ const toiletIcon = L.icon({
     // shadowAnchor: [12, 41]
 });
 
+// Define a larger version of the toilet icon for the selected state
+const selectedToiletIcon = L.icon({
+    iconUrl: "/premium-toilet.png",
+    iconSize: [48, 48], // Larger size
+    iconAnchor: [24, 48], // Adjusted anchor
+    popupAnchor: [0, -48] // Adjusted popup anchor
+    // Include shadow properties if you used them in the original icon
+});
+
 // Define a custom icon for the user
 const userIcon = new L.Icon({
-    iconUrl: '/user-location-marker.png', // Use path from /public
+    iconUrl: '/user.png', // Use path from /public
     iconSize: [25, 31],
     iconAnchor: [12, 31],
     popupAnchor: [1, -34],
@@ -63,9 +72,20 @@ const userIcon = new L.Icon({
 const defaultCenter: L.LatLngExpression = [47.3769, 8.5417]; // Default to Zurich center
 const defaultZoom = 13;
 
+// Component to handle map click events for deselecting markers
+function MapClickHandler({ onMapClick }: { onMapClick: () => void }) {
+  useMapEvents({
+    click: () => {
+      onMapClick();
+    },
+  });
+  return null;
+}
+
 // Update component to accept userLocation prop
 export default function ToiletMap({ userLocation }: ToiletMapProps) {
   const [toilets, setToilets] = useState<Toilet[]>([])
+  const [selectedToiletId, setSelectedToiletId] = useState<string | null>(null); // State for selected toilet
   const supabase = createClient() // Initialize Supabase client
 
   useEffect(() => {
@@ -89,6 +109,7 @@ export default function ToiletMap({ userLocation }: ToiletMapProps) {
   return (
     <MapContainer center={mapCenter} zoom={mapZoom} style={{ height: '90vh', width: '100%' }}>
       <ChangeView center={mapCenter} zoom={mapZoom} />
+      <MapClickHandler onMapClick={() => setSelectedToiletId(null)} /> {/* Add map click handler */}
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -111,7 +132,16 @@ export default function ToiletMap({ userLocation }: ToiletMapProps) {
         const googleMapsCoordsLink = `https://www.google.com/maps?q=${toilet.lat},${toilet.lng}`;
 
         return toilet.lat && toilet.lng && (
-          <Marker key={toilet.id} position={[toilet.lat, toilet.lng]} icon={toiletIcon}>
+          <Marker 
+            key={toilet.id} 
+            position={[toilet.lat, toilet.lng]} 
+            icon={selectedToiletId === toilet.id ? selectedToiletIcon : toiletIcon} // Conditional icon
+            eventHandlers={{ // Add click handler
+              click: () => {
+                setSelectedToiletId(toilet.id);
+              },
+            }}
+          >
              <Popup>
                <div className="text-sm font-sans max-w-xs"> 
                  <h3 className="font-bold text-base mb-1">{toilet.name || 'Public Toilet'}</h3>

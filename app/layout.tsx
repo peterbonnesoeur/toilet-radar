@@ -19,6 +19,30 @@ export const metadata = {
   metadataBase: new URL(defaultUrl),
   title: "Toilet Radar",
   description: "Find nearby public toilets",
+  icons: {
+    icon: '/logo.png',
+  },
+  openGraph: {
+    title: 'Toilet Radar',
+    description: 'Find nearby public toilets',
+    url: defaultUrl,
+    siteName: 'Toilet Radar',
+    images: [
+      {
+        url: '/logo.png',
+        width: 512,
+        height: 512,
+      },
+    ],
+    locale: 'en_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Toilet Radar',
+    description: 'Find nearby public toilets',
+    images: ['/logo.png'],
+  },
 };
 
 const geist = Geist({ subsets: ['latin'] });
