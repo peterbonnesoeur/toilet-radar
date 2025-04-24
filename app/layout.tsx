@@ -83,7 +83,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </Link>
 
                 <div className="flex gap-4 items-center">
-                  {!hasEnvVars ? <EnvVarWarning /> : <HeaderAuth />}
+                  {/* This is the sign up button */}
+                  {/* <Button variant="outline">Sign Up</Button> */}
+                  {/* {!hasEnvVars ? <EnvVarWarning /> : <HeaderAuth />} */}
                   <ThemeSwitcher />
                 </div>
               </div>
