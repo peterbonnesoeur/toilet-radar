@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
 // No longer need calculateDistance here
 // import { calculateDistance } from '@/lib/utils' 
@@ -47,102 +47,128 @@ export default function ClientMapWrapper() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false); // State to track client-side mount
+  const watchIdRef = useRef<number | null>(null); // <-- Ref to store watchId
 
-  // Set isClient to true only after component mounts
   useEffect(() => {
     setIsClient(true);
-  }, []);
+    let isMounted = true; // Flag to prevent state updates on unmounted component
+
+    // Start watching location if geolocation is available
+    if (navigator.geolocation) {
+      console.log('[Geolocation] Starting watchPosition...');
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        (position) => {
+          if (isMounted) {
+            const { latitude, longitude } = position.coords;
+            console.log(`[Geolocation Watch] Success: lat=${latitude}, lng=${longitude}`);
+            setUserLocation({ latitude, longitude });
+             setErrorMsg(null); // Clear previous errors on success
+          }
+        },
+        (error) => {
+          if (isMounted) {
+             console.error("[Geolocation Watch] Error:", error);
+             let msg = "Could not get real-time location.";
+             if (error.code === error.PERMISSION_DENIED) {
+               msg = "Please allow location access for live updates.";
+               // Stop watching if permission is denied permanently
+               if (watchIdRef.current !== null) {
+                 navigator.geolocation.clearWatch(watchIdRef.current);
+                 watchIdRef.current = null;
+               }
+             } else if (error.code === error.POSITION_UNAVAILABLE) {
+               msg = "Location information is temporarily unavailable.";
+             } else if (error.code === error.TIMEOUT) {
+               msg = "Getting location timed out.";
+             }
+             setErrorMsg(msg);
+             setUserLocation(null); // Clear location on error
+           }
+        },
+        { // Options for watchPosition
+          enableHighAccuracy: true,
+          timeout: 10000, // Max time to wait for an update
+          maximumAge: 0 // Don't use cached position
+        }
+      );
+    } else {
+       console.error('[Geolocation] Not supported.');
+       setErrorMsg("Geolocation is not supported by your browser.");
+    }
+
+    // Cleanup function: clear watch on unmount
+    return () => {
+      isMounted = false;
+      if (watchIdRef.current !== null) {
+        console.log('[Geolocation] Clearing watchPosition...');
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
+  }, []); // Empty dependency array ensures this runs only once on mount
 
   const supabase = createClient();
 
   const findNearestToiletsRoute = async () => {
-    console.log('[findNearestToiletsRoute] Starting...'); // Log start
+    console.log('[findNearestToiletsRoute] Starting...'); 
+    if (!userLocation) {
+        setErrorMsg("Waiting for your location... Please ensure location access is enabled.");
+        console.log('[findNearestToiletsRoute] Aborted: No user location available.');
+        return;
+    }
+    
     setIsLoading(true);
     setErrorMsg(null);
     setMultiStopUrl(null);
     setNearestToilets([]);
-    setUserLocation(null);
+    
+    const { latitude, longitude } = userLocation;
+    console.log(`[findNearestToiletsRoute] Using location: lat=${latitude}, lng=${longitude}`);
 
-    if (!navigator.geolocation) {
-      console.error('[findNearestToiletsRoute] Geolocation not supported.');
-      setErrorMsg("Geolocation is not supported by your browser.");
+    console.log('[findNearestToiletsRoute] Calling Supabase RPC find_nearest_toilets...');
+    const { data: fetchedToilets, error: rpcError } = await supabase.rpc(
+      'find_nearest_toilets',
+      {
+        user_lat: latitude,
+        user_lng: longitude,
+        radius_meters: 20000, 
+        result_limit: 3      
+      }
+    );
+
+    if (rpcError) {
+      console.error("[findNearestToiletsRoute] RPC Error:", rpcError);
+      setErrorMsg("Could not find nearby toilets. Please try again.");
+      setIsLoading(false);
+      return;
+    }
+
+    if (!fetchedToilets || fetchedToilets.length === 0) {
+      console.log('[findNearestToiletsRoute] RPC Success: No toilets found within 20km.');
+      setErrorMsg("No toilets found within 20km.");
       setIsLoading(false);
       return;
     }
     
-    console.log('[findNearestToiletsRoute] Requesting geolocation...');
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        console.log(`[findNearestToiletsRoute] Geolocation success: lat=${latitude}, lng=${longitude}`);
-        setUserLocation({ latitude, longitude });
+    console.log(`[findNearestToiletsRoute] RPC Success: Found ${fetchedToilets.length} toilets.`);
+    setNearestToilets(fetchedToilets);
 
-        console.log('[findNearestToiletsRoute] Calling Supabase RPC find_nearest_toilets...');
-        // Call the RPC function
-        const { data: fetchedToilets, error: rpcError } = await supabase.rpc(
-          'find_nearest_toilets',
-          {
-            user_lat: latitude,
-            user_lng: longitude,
-            radius_meters: 20000, // 20km radius
-            result_limit: 3        // Limit to 3 results
-          }
-        );
-
-        if (rpcError) {
-          console.error("[findNearestToiletsRoute] RPC Error:", rpcError);
-          setErrorMsg("Could not find nearby toilets. Please try again.");
-          setIsLoading(false);
-          return;
-        }
-
-        if (!fetchedToilets || fetchedToilets.length === 0) {
-          console.log('[findNearestToiletsRoute] RPC Success: No toilets found within 20km.');
-          setErrorMsg("No toilets found within 20km.");
-          setIsLoading(false);
-          return;
-        }
-        
-        console.log(`[findNearestToiletsRoute] RPC Success: Found ${fetchedToilets.length} toilets.`);
-        setNearestToilets(fetchedToilets);
-
-        // Construct the multi-stop Google Maps URL (using fetchedToilets)
-        let finalUrl = `https://www.google.com/maps/dir/?api=1&origin=${latitude},${longitude}`;
-        const waypoints = fetchedToilets.slice(0, -1) 
-                                     .map((t: NearestToiletResult) => `${t.lat},${t.lng}`)
-                                     .join('|');
-        const destination = fetchedToilets[fetchedToilets.length - 1]; 
-        
-        finalUrl += `&destination=${destination.lat},${destination.lng}`;
-        if (waypoints) {
-          finalUrl += `&waypoints=${waypoints}`;
-        }
-        finalUrl += `&travelmode=walking`;
-        
-        console.log('[findNearestToiletsRoute] Multi-stop URL created:', finalUrl);
-        setMultiStopUrl(finalUrl);
-        setIsLoading(false);
-        console.log('[findNearestToiletsRoute] Finished successfully.');
-      },
-      (error) => {
-        console.error("[findNearestToiletsRoute] Geolocation error:", error);
-        let msg = "Could not get your location.";
-        if (error.code === error.PERMISSION_DENIED) {
-          msg = "Please allow location access to find nearby toilets.";
-        } else if (error.code === error.POSITION_UNAVAILABLE) {
-          msg = "Location information is unavailable.";
-        } else if (error.code === error.TIMEOUT) {
-          msg = "Getting your location timed out.";
-        }
-        setErrorMsg(msg);
-        setIsLoading(false);
-      },
-      { 
-        enableHighAccuracy: true, // Request more accurate position
-        timeout: 10000, // Set a timeout (10 seconds)
-        maximumAge: 0 // Force a fresh location reading
-      }
-    );
+    // Construct the multi-stop Google Maps URL (using fetchedToilets)
+    let finalUrl = `https://www.google.com/maps/dir/?api=1&origin=${latitude},${longitude}`;
+    const waypoints = fetchedToilets.slice(0, -1) 
+                                 .map((t: NearestToiletResult) => `${t.lat},${t.lng}`)
+                                 .join('|');
+    const destination = fetchedToilets[fetchedToilets.length - 1]; 
+    
+    finalUrl += `&destination=${destination.lat},${destination.lng}`;
+    if (waypoints) {
+      finalUrl += `&waypoints=${waypoints}`;
+    }
+    finalUrl += `&travelmode=walking`;
+    
+    console.log('[findNearestToiletsRoute] Multi-stop URL created:', finalUrl);
+    setMultiStopUrl(finalUrl);
+    setIsLoading(false);
+    console.log('[findNearestToiletsRoute] Finished successfully.');
   };
 
   return (
@@ -151,8 +177,8 @@ export default function ClientMapWrapper() {
        <Image
          src="/logo.png"
          alt="Toilet Radar Logo"
-         width={100} // Adjust size as needed
-         height={100}
+         width={190} // Adjust size as needed
+         height={190}
          className="absolute top-4 right-4 z-[1000] hidden md:block opacity-80"
        />
       
