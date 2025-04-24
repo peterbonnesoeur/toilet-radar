@@ -44,7 +44,8 @@ const toiletIcon = L.icon({
     // iconRetinaUrl: "/toilet-icon-2x.png", // Optional: Add if you have a retina version
     iconSize: [32, 32],    // Adjust size as needed [width, height]
     iconAnchor: [16, 32],   // Point of the icon which will correspond to marker's location [width/2, height]
-    popupAnchor: [0, -32]   // Point from which the popup should open relative to the iconAnchor [offsetX, offsetY]
+    popupAnchor: [0, -32],  // Point from which the popup should open relative to the iconAnchor [offsetX, offsetY]
+    className: 'map-pin'    // Add class name
     // shadowUrl: "/marker-shadow.png", // Optional: Add shadow if desired
     // shadowSize: [41, 41],
     // shadowAnchor: [12, 41]
@@ -55,7 +56,8 @@ const selectedToiletIcon = L.icon({
     iconUrl: "/premium-toilet.png",
     iconSize: [48, 48], // Larger size
     iconAnchor: [24, 48], // Adjusted anchor
-    popupAnchor: [0, -48] // Adjusted popup anchor
+    popupAnchor: [0, -48], // Adjusted popup anchor
+    className: 'map-pin selected-pin' // Add class names (add specific selected class if needed)
     // Include shadow properties if you used them in the original icon
 });
 
@@ -66,7 +68,8 @@ const userIcon = new L.Icon({
     iconAnchor: [12, 31],
     popupAnchor: [1, -34],
     shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
-    shadowSize: [31, 31]
+    shadowSize: [31, 31],
+    className: 'map-pin user-pin' // Add class names
 });
 
 const defaultCenter: L.LatLngExpression = [47.3769, 8.5417]; // Default to Zurich center

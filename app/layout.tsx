@@ -6,6 +6,18 @@ import { hasEnvVars } from "@/utils/supabase/check-env-vars";
 import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import Link from "next/link";
+import Image from "next/image";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Menu } from "lucide-react";
 import "./globals.css";
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.webpack.css';
@@ -60,11 +72,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="min-h-screen flex flex-col items-center">
             <nav className="w-full flex justify-center border-b border-b-foreground/10 h-16">
               <div className="w-full max-w-5xl flex justify-between items-center p-3 px-5 text-sm">
-                <div className="flex gap-5 items-center font-semibold">
-                  <Link href={"/"}>🚽 Toilet Radar</Link>
+                <Link href={"/"} className="flex items-center gap-2 font-semibold">
+                  <Image
+                    src="/logo.png"
+                    alt="Toilet Radar Logo"
+                    width={28}
+                    height={28}
+                  />
+                  Toilet Radar
+                </Link>
+
+                <div className="flex gap-4 items-center">
+                  {!hasEnvVars ? <EnvVarWarning /> : <HeaderAuth />}
+                  <ThemeSwitcher />
                 </div>
-                {!hasEnvVars ? <EnvVarWarning /> : <HeaderAuth />}
-                <ThemeSwitcher />
               </div>
             </nav>
 

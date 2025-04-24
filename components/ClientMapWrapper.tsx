@@ -6,6 +6,7 @@ import { createClient } from '@/utils/supabase/client'
 // No longer need calculateDistance here
 // import { calculateDistance } from '@/lib/utils' 
 import { Button } from "@/components/ui/button"; // Assuming you use shadcn/ui Button
+import Image from "next/image"; // <-- Import Image
 
 // Dynamically import the ToiletMap component with SSR disabled
 const ToiletMap = dynamic(() => import('@/components/ToiletMap'), {
@@ -146,6 +147,15 @@ export default function ClientMapWrapper() {
 
   return (
     <div className="w-full h-full flex flex-col relative"> {/* Ensure wrapper allows positioning */}
+       {/* Logo Overlay - Positioned top-right */}
+       <Image
+         src="/logo.png"
+         alt="Toilet Radar Logo"
+         width={100} // Adjust size as needed
+         height={100}
+         className="absolute top-4 right-4 z-[1000] bg-background/50 backdrop-blur-sm p-1 rounded-md shadow-md hidden md:block"
+       />
+      
       {/* Map takes up most space - Added min-h */}
       <div className="flex-grow min-h-[400px]"> {/* Added min-h-[400px] as a fallback */}
         {/* Only render ToiletMap on the client-side after mount */} 
