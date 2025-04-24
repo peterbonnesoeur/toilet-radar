@@ -153,7 +153,7 @@ export default function ClientMapWrapper() {
          alt="Toilet Radar Logo"
          width={100} // Adjust size as needed
          height={100}
-         className="absolute top-4 right-4 z-[1000] bg-background/50 backdrop-blur-sm p-1 rounded-md shadow-md hidden md:block"
+         className="absolute top-4 right-4 z-[1000] hidden md:block opacity-80"
        />
       
       {/* Map takes up most space - Added min-h */}
@@ -167,7 +167,7 @@ export default function ClientMapWrapper() {
       </div>
 
       {/* Button and Results Area */}
-      <div className="absolute bottom-5 left-1/2 transform -translate-x-1/2 z-[1000] flex flex-col items-center gap-2 p-4 bg-background/80 backdrop-blur-sm rounded-lg shadow-lg max-w-md w-11/12"> 
+      <div className="absolute bottom-5 left-1/2 transform -translate-x-1/2 z-[1000] flex flex-col items-center gap-2 p-3 bg-background/80 backdrop-blur-sm rounded-lg shadow-lg"> {/* Removed max-w-md, w-11/12 and changed p-4 to p-3 */}
         <Button 
           onClick={findNearestToiletsRoute}
           disabled={isLoading}
