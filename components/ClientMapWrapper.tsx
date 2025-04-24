@@ -192,8 +192,8 @@ export default function ClientMapWrapper() {
         )}
       </div>
 
-      {/* Button and Results Area */}
-      <div className="absolute bottom-5 left-1/2 transform -translate-x-1/2 z-[1000] flex flex-col items-center gap-2 p-3 bg-background/80 backdrop-blur-sm rounded-lg shadow-lg"> {/* Removed max-w-md, w-11/12 and changed p-4 to p-3 */}
+      {/* Button and Results Area - Position changes based on screen size */}
+      <div className="absolute top-20 left-1/2 transform -translate-x-1/2 md:top-auto md:bottom-5 z-[1000] flex flex-col items-center gap-2 p-3 bg-background/80 backdrop-blur-sm rounded-lg shadow-lg"> {/* Default: top-20; md and up: bottom-5 */}
         <Button 
           onClick={findNearestToiletsRoute}
           disabled={isLoading}
