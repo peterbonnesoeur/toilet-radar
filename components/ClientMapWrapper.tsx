@@ -227,6 +227,20 @@ export default function ClientMapWrapper() {
              </ul>
            </div>
         )}
+
+        {/* Buy Me A Coffee Link - Shows after loading is finished */}
+        {!isLoading && (multiStopUrl || errorMsg) && (
+          <div className="mt-3 pt-2 border-t border-border/50 w-full text-center">
+             <a 
+               href="https://buymeacoffee.com/maximebonnesoeur" 
+               target="_blank" 
+               rel="noopener noreferrer"
+               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-yellow-400 text-yellow-900 rounded-md hover:bg-yellow-500 transition-colors"
+             >
+               <span>☕</span> Buy me a coffee?
+             </a>
+           </div>
+        )}
       </div>
     </div>
   )
