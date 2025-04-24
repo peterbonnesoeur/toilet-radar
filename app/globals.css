@@ -68,7 +68,23 @@
   }
 }
 
-/* Add styles for map pins */
+/* Dark mode specific overrides for map pins */
+.dark .leaflet-marker-icon.map-pin {
+  background-color: #404040; /* Dark grey/charcoal */
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); /* Slightly stronger shadow */
+}
+.dark .leaflet-marker-icon.map-pin.selected-pin {
+   background-color: #555555; /* Slightly lighter dark grey */
+   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+}
+/* Optional: User pin in dark mode */
+/* 
+.dark .leaflet-marker-icon.map-pin.user-pin {
+  background-color: #2a4a64; // Darker blueish
+}*/
+
+
+/* Add styles for map pins (default/light mode) */
 .leaflet-marker-icon.map-pin {
   background-color: #f5f5dc; /* Beige background */
   border-radius: 8px; /* Rounded corners */
@@ -85,15 +101,7 @@
   height: auto;
 }
 
-/* Optional: Slightly darker background for the selected pin */
-.leaflet-marker-icon.map-pin.selected-pin {
-   background-color: #ebebcD; /* Slightly darker beige or different color */
-   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-}
-
 /* Optional: Different background for user pin if desired */
-/* 
 .leaflet-marker-icon.map-pin.user-pin {
   background-color: #e0f2fe; 
 }
-*/

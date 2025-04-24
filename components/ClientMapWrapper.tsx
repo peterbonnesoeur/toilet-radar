@@ -156,8 +156,8 @@ export default function ClientMapWrapper() {
          className="absolute top-4 right-4 z-[1000] hidden md:block opacity-80"
        />
       
-      {/* Map takes up most space - Added min-h */}
-      <div className="flex-grow min-h-[400px]"> {/* Added min-h-[400px] as a fallback */}
+       {/* Map takes up most space - Ensure it's below the navbar/dropdown */}
+      <div className="relative z-0 flex-grow min-h-[400px]"> {/* Added relative z-0 */}
         {/* Only render ToiletMap on the client-side after mount */} 
         {isClient ? (
           <ToiletMap userLocation={userLocation} />

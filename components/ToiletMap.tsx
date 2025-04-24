@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 're
 import { useEffect, useState } from 'react'
 import { createClient } from '@/utils/supabase/client' // Adjusted import path
 import L from 'leaflet'; // Import Leaflet library for custom icons if needed
+import { useTheme } from 'next-themes'; // Import useTheme
 import 'leaflet-defaulticon-compatibility'; // <-- Add this line here
 
 // Define the Toilet type based on your Supabase table
@@ -90,6 +91,7 @@ export default function ToiletMap({ userLocation }: ToiletMapProps) {
   const [toilets, setToilets] = useState<Toilet[]>([])
   const [selectedToiletId, setSelectedToiletId] = useState<string | null>(null); // State for selected toilet
   const supabase = createClient() // Initialize Supabase client
+  const { theme } = useTheme(); // Get the current theme
 
   useEffect(() => {
     const fetchToilets = async () => {
@@ -109,13 +111,28 @@ export default function ToiletMap({ userLocation }: ToiletMapProps) {
     : defaultCenter;
   const mapZoom = userLocation ? 15 : defaultZoom;
 
+  // Define tile layer URLs and attributions
+  const lightTileUrl = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+  const lightAttribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+
+  const darkTileUrl = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+  const darkAttribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+
+  // Select tile layer based on theme
+  const tileUrl = theme === 'dark' ? darkTileUrl : lightTileUrl;
+  const attribution = theme === 'dark' ? darkAttribution : lightAttribution;
+
+  // Force re-render of TileLayer when theme changes by using a key
+  const tileLayerKey = theme; 
+
   return (
     <MapContainer center={mapCenter} zoom={mapZoom} style={{ height: '90vh', width: '100%' }}>
       <ChangeView center={mapCenter} zoom={mapZoom} />
       <MapClickHandler onMapClick={() => setSelectedToiletId(null)} /> {/* Add map click handler */}
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        key={tileLayerKey} // Add key to force re-render on theme change
+        attribution={attribution} // Use dynamic attribution
+        url={tileUrl}             // Use dynamic URL
       />
       {userLocation && (
         <Marker

@@ -70,7 +70,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           disableTransitionOnChange
         >
           <main className="min-h-screen flex flex-col items-center">
-            <nav className="w-full flex justify-center border-b border-b-foreground/10 h-16">
+            <nav className="relative z-10 w-full flex justify-center border-b border-b-foreground/10 h-16 bg-background">
               <div className="w-full max-w-5xl flex justify-between items-center p-3 px-5 text-sm">
                 <Link href={"/"} className="flex items-center gap-2 font-semibold">
                   <Image
