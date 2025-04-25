@@ -95,7 +95,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               {children}
             </div>
 
-            <footer className="w-full border-t border-t-foreground/10 p-8 flex justify-center text-center text-xs">
+            <footer className="w-full border-t border-t-foreground/10 p-8 flex flex-col justify-center text-center text-xs">
               <p>
                 Powered by{" "}
                 <a
@@ -114,6 +114,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   rel="noreferrer"
                 >
                   Leaflet
+                </a>
+              </p>
+              
+              <p>
+                Made with ❤️ by{" "}
+                <a
+                  href="https://github.com/peterbonnesoeur"
+                  target="_blank"
+                  className="font-bold hover:underline"
+                  rel="noreferrer"
+                >
+                  Maxime Bonnesoeur
                 </a>
               </p>
             </footer>
