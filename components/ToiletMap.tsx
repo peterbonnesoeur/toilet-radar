@@ -6,6 +6,8 @@ import { createClient } from '@/utils/supabase/client' // Adjusted import path
 import L from 'leaflet'; // Import Leaflet library for custom icons if needed
 import { useTheme } from 'next-themes'; // Import useTheme
 import 'leaflet-defaulticon-compatibility'; // <-- Add this line here
+import { Button } from '@/components/ui/button'; // Import Button
+import { Crosshair } from 'lucide-react'; // Import icon
 
 // Define the Toilet type based on your Supabase table
 type Toilet = {
@@ -86,6 +88,43 @@ function MapClickHandler({ onMapClick }: { onMapClick: () => void }) {
   return null;
 }
 
+// --- Add RecenterControl Component ---
+function RecenterControl({ userLocation }: { userLocation: UserLocation }) {
+  const map = useMap();
+  console.log('[RecenterControl] Rendering. userLocation:', userLocation); // Log location on render
+
+  const recenterMap = () => {
+    console.log('[RecenterControl] recenterMap called. userLocation:', userLocation); // Log on click
+    if (userLocation) {
+      console.log(`[RecenterControl] Setting view to: [${userLocation.latitude}, ${userLocation.longitude}]`); // Log before setView
+      map.setView([userLocation.latitude, userLocation.longitude], 15); // Recenter to user location with zoom 15
+    }
+  };
+
+  if (!userLocation) {
+    console.log('[RecenterControl] Not rendering button because userLocation is null.'); // Log if not rendering
+    return null;
+  }
+
+  return (
+    // Position top-right
+    <div className="leaflet-top leaflet-right" style={{ zIndex: 1000 }}> 
+      <div className="leaflet-control leaflet-bar"> 
+        <Button
+          variant="outline"
+          size="icon"
+          className="w-8 h-8 bg-background hover:bg-muted" // Shadcn button needs size adjust
+          onClick={recenterMap}
+          title="Recenter map on your location"
+        >
+          <Crosshair className="w-4 h-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+// --- End RecenterControl Component ---
+
 // Update component to accept userLocation prop
 export default function ToiletMap({ userLocation }: ToiletMapProps) {
   const [toilets, setToilets] = useState<Toilet[]>([])
@@ -126,13 +165,16 @@ export default function ToiletMap({ userLocation }: ToiletMapProps) {
   const tileLayerKey = theme; 
 
   return (
-    <MapContainer center={mapCenter} zoom={mapZoom} style={{ height: '90vh', width: '100%' }}>
+    // Re-enable default zoom control
+    <MapContainer center={mapCenter} zoom={mapZoom} style={{ height: '90vh', width: '100%' }}> 
+      {/* <L.Control.Zoom position="topleft" /> */}
       <ChangeView center={mapCenter} zoom={mapZoom} />
-      <MapClickHandler onMapClick={() => setSelectedToiletId(null)} /> {/* Add map click handler */}
+      <MapClickHandler onMapClick={() => setSelectedToiletId(null)} /> 
+      <RecenterControl userLocation={userLocation} /> {/* Add Recenter button */}
       <TileLayer
-        key={tileLayerKey} // Add key to force re-render on theme change
-        attribution={attribution} // Use dynamic attribution
-        url={tileUrl}             // Use dynamic URL
+        key={tileLayerKey} 
+        attribution={attribution} 
+        url={tileUrl}             
       />
       {userLocation && (
         <Marker
