@@ -179,7 +179,7 @@ export default function ClientMapWrapper() {
          alt="Toilet Radar Logo"
          width={190} // Adjust size as needed
          height={190}
-         className="absolute top-4 right-4 z-[1000] hidden opacity-80"
+         className="absolute top-4 right-4 z-[1000] hidden md:block opacity-80"
        />
       
        {/* Map takes up most space - Ensure it's below the navbar/dropdown */}

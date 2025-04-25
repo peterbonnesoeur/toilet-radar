@@ -67,7 +67,7 @@ const selectedToiletIcon = L.icon({
 // Define a custom icon for the user
 const userIcon = new L.Icon({
     iconUrl: '/user.png', // Use path from /public
-    iconSize: [25, 31],
+    iconSize: [40, 40],
     iconAnchor: [12, 31],
     popupAnchor: [1, -34],
     shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
@@ -107,20 +107,20 @@ function RecenterControl({ userLocation }: { userLocation: UserLocation }) {
   }
 
   return (
-    // Position top-right
-    <div className="leaflet-top leaflet-right" style={{ zIndex: 1000 }}> 
-      <div className="leaflet-control leaflet-bar"> 
-        <Button
-          variant="outline"
-          size="icon"
-          className="w-8 h-8 bg-background hover:bg-muted" // Shadcn button needs size adjust
-          onClick={recenterMap}
-          title="Recenter map on your location"
-        >
-          <Crosshair className="w-4 h-4" />
-        </Button>
+    // Position bottom-right, offset slightly
+     <div className="leaflet-bottom leaflet-right" style={{ zIndex: 1000 }}> 
+       <div className="leaflet-control leaflet-bar" style={{ marginBottom: '22px' }}> {/* Offset from bottom */}
+          <Button
+            variant="outline"
+            size="icon"
+            className="w-8 h-8 bg-background hover:bg-muted"
+            onClick={recenterMap}
+            title="Recenter map on your location"
+          >
+            <Crosshair className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
-    </div>
   );
 }
 // --- End RecenterControl Component ---
