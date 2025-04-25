@@ -18,9 +18,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Menu } from "lucide-react";
-import "./globals.css";
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.webpack.css';
+import "./globals.css";
 import { Analytics } from '@vercel/analytics/react';
 
 const defaultUrl = process.env.VERCEL_URL

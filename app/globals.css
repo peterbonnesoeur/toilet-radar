@@ -29,6 +29,7 @@
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
+    --text-color: 30 10% 20%;
   }
 
   .dark {
@@ -56,6 +57,7 @@
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+    --text-color: 0 0% 98%;
   }
 }
 
@@ -112,3 +114,49 @@
 .leaflet-marker-icon.map-pin.user-pin {
   /*background-color:  #ebebcD; /* Slightly darker beige */
 }
+
+/* === Leaflet Popup Theming === */
+
+/* Style popup background and text using theme variables */
+.leaflet-popup-content-wrapper {
+  background-color: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  border-radius: var(--radius);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border: 1px solid hsl(var(--border));
+  padding: 1px; /* Override default Leaflet padding if needed */
+}
+
+/* Style the popup content text (links etc. will inherit) */
+.leaflet-popup-content {
+  color: hsl(var(--popover-foreground));
+  margin: 12px 18px; /* Adjust padding inside the wrapper */
+  line-height: 1.4;
+  font-size: 0.875rem; /* Match text-sm */
+}x
+
+/* Remove default Leaflet border on tip */
+.leaflet-popup-tip-container {
+  /* Optional: adjust size if needed */
+}
+
+/* Style popup tip background to match wrapper */
+.leaflet-popup-tip {
+  background-color: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  border-bottom-color: transparent; /* Hide bottom border */
+  border-right-color: transparent; /* Hide right border */
+  box-shadow: -1px -1px 2px rgba(0, 0, 0, 0.05); /* Subtle shadow */
+}
+
+/* Adjust close button for better visibility */
+.leaflet-popup-close-button {
+  color: hsl(var(--popover-foreground)) !important; /* Use important to override Leaflet */
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+.leaflet-popup-close-button:hover {
+  opacity: 1;
+}
+
+/* Dark mode specific overrides are handled by the CSS variables changing */
