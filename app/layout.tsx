@@ -95,7 +95,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               {children}
             </div>
 
-            <footer className="w-full border-t border-t-foreground/10 p-8 flex flex-col justify-center text-center text-xs">
+            <footer 
+              className="w-full border-t border-t-foreground/10 px-8 py-4 flex flex-col justify-center text-center text-xs bg-background"
+            >
               <p>
                 Powered by{" "}
                 <a
