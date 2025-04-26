@@ -36,8 +36,9 @@ interface ToiletMapProps {
 const ChangeView = ({ center, zoom }: { center: L.LatLngExpression, zoom: number }) => {
   const map = useMap();
   useEffect(() => {
-    map.setView(center, zoom);
-  }, [center, zoom, map]);
+    // This only runs once on mount
+    map.setView(center, zoom); 
+  }, [map]);
   return null;
 };
 
