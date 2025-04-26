@@ -167,7 +167,7 @@ export default function ToiletMap({ userLocation }: ToiletMapProps) {
 
   return (
     // Re-enable default zoom control
-    <MapContainer center={mapCenter} zoom={mapZoom} style={{ height: '90vh', width: '100%' }}> 
+    <MapContainer center={mapCenter} zoom={mapZoom} style={{ height: '85vh', width: '100%' }}> 
       {/* <L.Control.Zoom position="topleft" /> */}
       <ChangeView center={mapCenter} zoom={mapZoom} />
       <MapClickHandler onMapClick={() => setSelectedToiletId(null)} /> 
