@@ -9,10 +9,29 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '../.env.local') });
 
+// --- Configuration ---
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 // Consider using a different Overpass instance if needed, check https://wiki.openstreetmap.org/wiki/Overpass_API#Public_Overpass_API_instances
-const overpassUrl = 'https://overpass-api.de/api/interpreter'; 
+const overpassUrl = 'https://overpass-api.de/api/interpreter';
+
+// --- Argument Parsing ---
+// Get country code from command line arguments (e.g., node populateFromOSM.mjs --country=DE)
+const args = process.argv.slice(2); // Remove 'node' and script path
+const countryArg = args.find(arg => arg.startsWith('--country='));
+let countryCode = 'CH'; // Default to Switzerland
+if (countryArg) {
+    countryCode = countryArg.split('=')[1]?.toUpperCase();
+    if (!countryCode || countryCode.length !== 2) {
+        console.error("Invalid country code format. Please use '--country=XX' where XX is the 2-letter ISO 3166-1 code.");
+        process.exit(1);
+    }
+    console.log(`Using country code: ${countryCode}`);
+} else {
+    console.log('No country code provided via --country argument. Defaulting to Switzerland (CH).');
+}
+// --- End Argument Parsing ---
+
 
 if (!supabaseUrl || !supabaseServiceKey) {
   console.error('Error: Make sure NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_KEY are set in your .env.local file.');
@@ -22,11 +41,11 @@ if (!supabaseUrl || !supabaseServiceKey) {
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // --- Overpass Query ---
-// Fetches all nodes tagged as amenity=toilets within Switzerland
+// Fetches all nodes tagged as amenity=toilets within the specified country
 // Increase timeout if needed, especially for large areas
 const overpassQuery = `
 [out:json][timeout:240]; /* Output JSON, increased timeout */
-area["ISO3166-1"="CH"][admin_level=2]->.searchArea; /* Define Switzerland */
+area["ISO3166-1"="${countryCode}"][admin_level=2]->.searchArea; /* Define the country area */
 (
   node["amenity"="toilets"](area.searchArea);
 );
@@ -112,7 +131,7 @@ function mapOsmToDb(element) {
 
 // --- Main Function ---
 async function populateFromOsm() {
-  console.log(`Querying Overpass API (${overpassUrl})...`);
+  console.log(`Querying Overpass API (${overpassUrl}) for country ${countryCode}...`);
   try {
     const response = await axios.post(overpassUrl, `data=${encodeURIComponent(overpassQuery)}`, { // Ensure data is properly encoded
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
@@ -161,6 +180,7 @@ async function populateFromOsm() {
                     ...rest,
                     lat: lat,
                     lng: lng,
+                    country_code: countryCode,
                     geom: `SRID=4326;POINT(${lng} ${lat})` // Standard PostGIS EWKT format with SRID
                 };
             } else {
@@ -204,4 +224,5 @@ async function populateFromOsm() {
 }
 
 // --- Run ---
+// Example usage: node scripts/populateFromOSM.mjs --country=FR
 populateFromOsm(); 
