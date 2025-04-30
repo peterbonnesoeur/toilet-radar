@@ -1,13 +1,14 @@
 'use client' // Add this directive for client-side hooks
 
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react' // Import useCallback and useRef
 import { createClient } from '@/utils/supabase/client' // Adjusted import path
 import L from 'leaflet'; // Import Leaflet library for custom icons if needed
 import { useTheme } from 'next-themes'; // Import useTheme
 import 'leaflet-defaulticon-compatibility'; // <-- Add this line here
 import { Button } from '@/components/ui/button'; // Import Button
 import { Crosshair } from 'lucide-react'; // Import icon
+import debounce from 'lodash.debounce'; // Re-add debounce
 
 // Define the Toilet type based on your Supabase table
 type Toilet = {
@@ -89,7 +90,25 @@ function MapClickHandler({ onMapClick }: { onMapClick: () => void }) {
   return null;
 }
 
-// --- Add RecenterControl Component ---
+// --- Re-introduce MapEvents Component ---
+function MapEvents({ onMapViewChange }: { onMapViewChange: (map: L.Map) => void }) {
+  const map = useMapEvents({
+    moveend: () => {
+        onMapViewChange(map);
+    },
+    zoomend: () => {
+        onMapViewChange(map);
+    },
+    // Fetch on initial load as well
+    load: () => {
+        onMapViewChange(map);
+    }
+  });
+  return null;
+}
+// --- End MapEvents Component ---
+
+// --- RecenterControl Component ---
 function RecenterControl({ userLocation }: { userLocation: UserLocation }) {
   const map = useMap();
   console.log('[RecenterControl] Rendering. userLocation:', userLocation); // Log location on render
@@ -130,21 +149,88 @@ function RecenterControl({ userLocation }: { userLocation: UserLocation }) {
 export default function ToiletMap({ userLocation }: ToiletMapProps) {
   const [toilets, setToilets] = useState<Toilet[]>([])
   const [selectedToiletId, setSelectedToiletId] = useState<string | null>(null); // State for selected toilet
+  const [isLoading, setIsLoading] = useState(true); // Add loading state, initially true
   const supabase = createClient() // Initialize Supabase client
   const { theme } = useTheme(); // Get the current theme
+  // Ref to store the AbortController for the current fetch operation
+  const currentFetchControllerRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    const fetchToilets = async () => {
-      const { data, error } = await supabase.from('toilets').select('*')
-      if (error) {
-        console.error('Error fetching toilets:', error)
-      } else if (data) {
-        setToilets(data)
-      }
+  // Define the zoom threshold
+  const ZOOM_THRESHOLD = 12; // Adjust as needed
+
+  // --- V3 Fetch Function (Deterministic Sampling) --- 
+  const fetchToiletsV3 = useCallback(async (map: L.Map | null, signal: AbortSignal) => {
+    if (!map) return; // Don't fetch if map isn't ready
+
+    const currentZoom = map.getZoom();
+    const isZoomedIn = currentZoom >= ZOOM_THRESHOLD;
+    const center = map.getCenter(); // Get map center
+    
+    console.log(`[ToiletMap V3] Fetching. Zoom: ${currentZoom}, Zoomed In: ${isZoomedIn}, Center: ${center.lat},${center.lng}, User:`, userLocation);
+
+    if (signal.aborted) {
+        console.log('[ToiletMap V3] Fetch aborted before RPC call.');
+        return; 
     }
-    fetchToilets()
-  }, [supabase]) // Add supabase as a dependency
-  
+
+    const params = {
+      p_center_lat: center.lat, // Pass map center lat
+      p_center_lng: center.lng, // Pass map center lng
+      p_user_lat: userLocation?.latitude ?? null,
+      p_user_lng: userLocation?.longitude ?? null,
+      p_is_zoomed_in: isZoomedIn,
+      result_limit: 1000 
+    };
+
+    console.log('[ToiletMap V3] Calling get_toilets_deterministic_v3 with params:', JSON.stringify(params));
+
+    try {
+      // Call the new V3 function
+      const { data, error: rpcError } = await supabase.rpc(
+          'get_toilets_deterministic_v3', 
+          params
+      );
+
+      if (signal.aborted) {
+        console.log('[ToiletMap V3] Fetch aborted after RPC call returned.');
+        return; 
+      }
+      if (!signal.aborted) {
+           setIsLoading(false);
+      }
+
+      if (rpcError) {
+           console.error('[ToiletMap V3] Error fetching toilets:', rpcError);
+      } else if (data) {
+        console.log(`[ToiletMap V3] Received ${data.length} toilets.`);
+        setToilets(data);
+      }
+    } catch (error: any) {
+        if (error.name !== 'AbortError') { 
+            setIsLoading(false); 
+            console.error('[ToiletMap V3] Unexpected error during fetch:', error);
+        } else {
+             console.log('[ToiletMap V3] Fetch aborted via catch.');
+        }
+    }
+  }, [supabase, userLocation]); 
+
+  // Debounced fetch, handling AbortController - uses V3 fetch now
+  const debouncedFetchToilets = useCallback(
+    debounce((map: L.Map | null) => {
+      if (!map) return;
+      if (currentFetchControllerRef.current) {
+        currentFetchControllerRef.current.abort();
+        console.log('[ToiletMap V3] Aborting previous fetch...');
+      }
+      const controller = new AbortController();
+      currentFetchControllerRef.current = controller;
+      setIsLoading(true); 
+      fetchToiletsV3(map, controller.signal); // Call V3 fetch
+    }, 500), 
+    [fetchToiletsV3] // Dependency is now fetchToiletsV3
+  );
+
   // Determine map center and zoom based on user location prop
   const mapCenter: L.LatLngExpression = userLocation
     ? [userLocation.latitude, userLocation.longitude]
@@ -166,11 +252,25 @@ export default function ToiletMap({ userLocation }: ToiletMapProps) {
   const tileLayerKey = theme; 
 
   return (
-    // Re-enable default zoom control
-    <MapContainer center={mapCenter} zoom={mapZoom} style={{ height: '85vh', width: '100%' }}> 
-      {/* <L.Control.Zoom position="topleft" /> */}
+    <MapContainer 
+        center={mapCenter} 
+        zoom={mapZoom} 
+        style={{ height: '85vh', width: '100%' }} 
+        whenReady={() => { // Correct prop name: whenReady
+            // The map instance is available via useMap() hook within children,
+            // or we can set it via a ref if preferred. Let's use a ref for simplicity here.
+            // Need to define mapRef: const mapRef = useRef<L.Map | null>(null);
+            // And assign it: ref={mapRef}
+            // Then call handleMapCreated(mapRef.current) if mapRef.current exists.
+            // However, a simpler approach is to leverage the fact that MapEvents runs on 'load'.
+            // Let's remove whenReady and handleMapCreated, and rely on MapEvents 'load' trigger.
+        }}
+    >
+       {/* Add MapEvents to trigger fetch on move/zoom/load */}
+       {/* MapEvents needs the map instance, which it gets via useMapEvents hook internally */} 
+       <MapEvents onMapViewChange={(map) => debouncedFetchToilets(map)} />
       <ChangeView center={mapCenter} zoom={mapZoom} />
-      <MapClickHandler onMapClick={() => setSelectedToiletId(null)} /> 
+      <MapClickHandler onMapClick={() => setSelectedToiletId(null)} />
       <RecenterControl userLocation={userLocation} /> {/* Add Recenter button */}
       <TileLayer
         key={tileLayerKey} 
