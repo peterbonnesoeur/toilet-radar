@@ -22,12 +22,13 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.webpack.css';
 import "./globals.css";
 import { Analytics } from '@vercel/analytics/react';
+import { Metadata } from 'next';
 
 const defaultUrl = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
   : 'http://localhost:3000';
 
-export const metadata = {
+export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
   title: "Toilet Radar",
   description: "Find nearby public toilets",
@@ -54,6 +55,9 @@ export const metadata = {
     title: 'Toilet Radar',
     description: 'Find nearby public toilets',
     images: ['/logo.png'],
+  },
+  verification: {
+    google: 'VL1kTPtwgiok_KtpB3XKlQ1pyg6SvATpOFlujXpg1r4'
   },
 };
 
