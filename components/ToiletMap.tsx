@@ -7,7 +7,8 @@ import L from 'leaflet'; // Import Leaflet library for custom icons if needed
 import { useTheme } from 'next-themes'; // Import useTheme
 import 'leaflet-defaulticon-compatibility'; // <-- Add this line here
 import { Button } from '@/components/ui/button'; // Import Button
-import { Crosshair } from 'lucide-react'; // Import icon
+import { Crosshair, Search, MapPin } from 'lucide-react'; // Import icons
+import { Input } from '@/components/ui/input'; // Import Input for search
 import debounce from 'lodash.debounce'; // Re-add debounce
 
 // Define the Toilet type based on your Supabase table
@@ -32,16 +33,6 @@ type UserLocation = {
 interface ToiletMapProps {
   userLocation: UserLocation;
 }
-
-// Component to update map view when center or zoom changes
-const ChangeView = ({ center, zoom }: { center: L.LatLngExpression, zoom: number }) => {
-  const map = useMap();
-  useEffect(() => {
-    // This only runs once on mount
-    map.setView(center, zoom); 
-  }, [map]);
-  return null;
-};
 
 // Define the custom toilet icon
 const toiletIcon = L.icon({
@@ -108,42 +99,218 @@ function MapEvents({ onMapViewChange }: { onMapViewChange: (map: L.Map) => void 
 }
 // --- End MapEvents Component ---
 
-// --- RecenterControl Component ---
+// --- Manual Recenter Control Component ---
 function RecenterControl({ userLocation }: { userLocation: UserLocation }) {
   const map = useMap();
-  console.log('[RecenterControl] Rendering. userLocation:', userLocation); // Log location on render
 
   const recenterMap = () => {
-    console.log('[RecenterControl] recenterMap called. userLocation:', userLocation); // Log on click
-    if (userLocation) {
-      console.log(`[RecenterControl] Setting view to: [${userLocation.latitude}, ${userLocation.longitude}]`); // Log before setView
-      map.setView([userLocation.latitude, userLocation.longitude], 15); // Recenter to user location with zoom 15
+    console.log('[RecenterControl] Manual recenter requested. userLocation:', userLocation);
+    if (userLocation && map && map.getContainer && map.getContainer()) {
+      try {
+        console.log(`[RecenterControl] Setting view to: [${userLocation.latitude}, ${userLocation.longitude}]`);
+        map.setView([userLocation.latitude, userLocation.longitude], 15); // Recenter to user location with zoom 15
+      } catch (error) {
+        console.log('[RecenterControl] Error setting view:', error);
+      }
     }
   };
 
   if (!userLocation) {
-    console.log('[RecenterControl] Not rendering button because userLocation is null.'); // Log if not rendering
-    return null;
+    return null; // Don't show button if no location
   }
 
   return (
-    // Position bottom-right, offset slightly
-     <div className="leaflet-bottom leaflet-right" style={{ zIndex: 1000 }}> 
-       <div className="leaflet-control leaflet-bar" style={{ marginBottom: '22px' }}> {/* Offset from bottom */}
-          <Button
-            variant="outline"
-            size="icon"
-            className="w-8 h-8 bg-background hover:bg-muted"
-            onClick={recenterMap}
-            title="Recenter map on your location"
-          >
-            <Crosshair className="w-4 h-4" />
-          </Button>
-        </div>
+    <div className="leaflet-bottom leaflet-right" style={{ zIndex: 1000 }}> 
+      <div className="leaflet-control leaflet-bar" style={{ marginBottom: '22px' }}>
+        <Button
+          variant="outline"
+          size="icon"
+          className="w-8 h-8 bg-background hover:bg-muted"
+          onClick={recenterMap}
+          title="Recenter map on your location"
+        >
+          <Crosshair className="w-4 h-4" />
+        </Button>
       </div>
+    </div>
   );
 }
-// --- End RecenterControl Component ---
+// --- End Recenter Control Component ---
+
+// --- Location Search Component ---
+function LocationSearch() {
+  const map = useMap();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [showResults, setShowResults] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false); // Track if search bar is expanded
+
+  // Geocoding function using free Nominatim service (OpenStreetMap)
+  const searchLocation = async (query: string) => {
+    if (!query.trim()) return;
+    
+    setIsSearching(true);
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1`
+      );
+      
+      if (response.ok) {
+        const results = await response.json();
+        setSearchResults(results);
+        setShowResults(true);
+        console.log('[LocationSearch] Found', results.length, 'results for:', query);
+      }
+    } catch (error) {
+      console.log('[LocationSearch] Error:', error);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Debounced search to avoid too many requests
+  const debouncedSearch = useCallback(
+    debounce((query: string) => {
+      searchLocation(query);
+    }, 500),
+    []
+  );
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchQuery(value);
+    
+    if (value.length > 2) {
+      debouncedSearch(value);
+    } else {
+      setShowResults(false);
+      setSearchResults([]);
+    }
+  };
+
+  const selectLocation = (result: any) => {
+    const lat = parseFloat(result.lat);
+    const lng = parseFloat(result.lon);
+    
+    console.log(`[LocationSearch] Centering map on: ${result.display_name} (${lat}, ${lng})`);
+    
+    if (map && map.getContainer && map.getContainer()) {
+      try {
+        map.setView([lat, lng], 14); // Center with good zoom level
+      } catch (error) {
+        console.log('[LocationSearch] Error setting view:', error);
+      }
+    }
+    
+    // Clear search but keep expanded state
+    setSearchQuery('');
+    setShowResults(false);
+    setSearchResults([]);
+  };
+
+  const toggleExpanded = () => {
+    setIsExpanded(!isExpanded);
+    if (!isExpanded) {
+      // Clear search when collapsing
+      setSearchQuery('');
+      setShowResults(false);
+      setSearchResults([]);
+    }
+  };
+
+  return (
+    <div className="leaflet-top leaflet-right" style={{ zIndex: 1000, marginTop: '10px', marginRight: '10px' }}>
+      <div className="leaflet-control leaflet-bar bg-background rounded-md shadow-lg">
+        <div className="relative">
+          {/* Collapsed State - Just the Search Icon */}
+          {!isExpanded && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="w-10 h-10 rounded-md"
+              onClick={toggleExpanded}
+              title="Search for a location"
+            >
+              <Search className="w-4 h-4" />
+            </Button>
+          )}
+          
+          {/* Expanded State - Full Search Bar */}
+          {isExpanded && (
+            <div className="flex items-center gap-1 p-1">
+              <div className="relative flex-1 min-w-[200px] sm:min-w-[280px]">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Search location..."
+                    value={searchQuery}
+                    onChange={handleInputChange}
+                    className="pl-8 pr-4 text-sm h-8"
+                    disabled={isSearching}
+                    autoFocus
+                  />
+                </div>
+                
+                {/* Search Results Dropdown */}
+                {showResults && searchResults.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-y-auto z-20">
+                    {searchResults.map((result, index) => (
+                      <button
+                        key={index}
+                        onClick={() => selectLocation(result)}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted border-b last:border-b-0 flex items-start gap-2"
+                      >
+                        <MapPin className="w-3 h-3 mt-0.5 text-muted-foreground flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate text-xs sm:text-sm">{result.display_name}</div>
+                          {result.type && (
+                            <div className="text-xs text-muted-foreground capitalize">{result.type}</div>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                
+                {/* No Results Message */}
+                {showResults && searchResults.length === 0 && !isSearching && searchQuery.length > 2 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg p-3 z-20">
+                    <div className="text-sm text-muted-foreground text-center">
+                      No locations found for "{searchQuery}"
+                    </div>
+                  </div>
+                )}
+                
+                {/* Loading Indicator */}
+                {isSearching && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg p-3 z-20">
+                    <div className="text-sm text-muted-foreground text-center">
+                      Searching...
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Close Button */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="w-8 h-8 rounded-md flex-shrink-0"
+                onClick={toggleExpanded}
+                title="Close search"
+              >
+                <span className="text-lg leading-none">×</span>
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+// --- End Location Search Component ---
 
 // Update component to accept userLocation prop
 export default function ToiletMap({ userLocation }: ToiletMapProps) {
@@ -377,23 +544,14 @@ export default function ToiletMap({ userLocation }: ToiletMapProps) {
     <MapContainer 
         center={mapCenter} 
         zoom={mapZoom} 
-        style={{ height: '85vh', width: '100%' }} 
-        whenReady={() => { // Correct prop name: whenReady
-            // The map instance is available via useMap() hook within children,
-            // or we can set it via a ref if preferred. Let's use a ref for simplicity here.
-            // Need to define mapRef: const mapRef = useRef<L.Map | null>(null);
-            // And assign it: ref={mapRef}
-            // Then call handleMapCreated(mapRef.current) if mapRef.current exists.
-            // However, a simpler approach is to leverage the fact that MapEvents runs on 'load'.
-            // Let's remove whenReady and handleMapCreated, and rely on MapEvents 'load' trigger.
-        }}
+        style={{ height: '85vh', width: '100%' }}
     >
        {/* Add MapEvents to trigger fetch on move/zoom/load */}
        {/* MapEvents needs the map instance, which it gets via useMapEvents hook internally */} 
        <MapEvents onMapViewChange={(map) => debouncedFetchToilets(map)} />
-      <ChangeView center={mapCenter} zoom={mapZoom} />
       <MapClickHandler onMapClick={() => setSelectedToiletId(null)} />
-      <RecenterControl userLocation={userLocation} /> {/* Add Recenter button */}
+      <RecenterControl userLocation={userLocation} />
+      <LocationSearch />
       <TileLayer
         key={tileLayerKey} 
         attribution={attribution} 
