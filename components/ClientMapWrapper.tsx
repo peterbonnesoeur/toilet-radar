@@ -385,13 +385,13 @@ export default function ClientMapWrapper() {
 
   return (
     <div className="w-full h-full flex flex-col relative"> {/* Ensure wrapper allows positioning */}
-       {/* Logo Overlay - Positioned top-right */}
+       {/* Logo Overlay - Positioned top-left to avoid search control */}
        <Image
          src="/logo.png"
          alt="Toilet Radar Logo"
          width={190} // Adjust size as needed
          height={190}
-         className="absolute top-4 right-4 z-[1000] hidden md:block opacity-80"
+         className="absolute top-4 left-4 z-[10] hidden md:block opacity-80"
        />
       
        {/* Map takes up most space - Ensure it's below the navbar/dropdown */}
