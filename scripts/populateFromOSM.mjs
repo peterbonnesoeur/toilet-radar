@@ -161,7 +161,7 @@ async function populateFromOsm() {
     // it WILL create duplicate entries unless you clear the table first
     // or modify the table and script to use UPSERT based on an osm_id column.
     
-    console.warn("Using simple INSERT. Ensure the 'toilets' table is empty or duplicates are acceptable/handled.");
+    console.warn("Using simple INSERT. Ensure the 'toilet_location' table is empty or duplicates are acceptable/handled.");
     console.log('Attempting to insert data into Supabase...');
     
     const batchSize = 100; // Adjust as needed
@@ -196,7 +196,7 @@ async function populateFromOsm() {
 
         console.log(`Inserting batch ${Math.floor(i / batchSize) + 1} of ${Math.ceil(toiletsToInsert.length / batchSize)} (${batchWithGeom.length} toilets)...`);
 
-        const { error } = await supabase.from('toilets').insert(batchWithGeom);
+        const { error } = await supabase.from('toilet_location').insert(batchWithGeom);
 
         if (error) {
             console.error(`Error inserting batch ${Math.floor(i / batchSize) + 1}:`, error.message);

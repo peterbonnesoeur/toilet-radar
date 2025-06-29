@@ -67,7 +67,12 @@ export default function ClientMapWrapper() {
         },
         (error) => {
           if (isMounted) {
-             console.error("[Geolocation Watch] Error:", error);
+             console.log("[Geolocation Watch] Error details:");
+             console.log("- Code:", error.code);
+             console.log("- Message:", error.message);
+             console.log("- Error type:", error.code === 1 ? "PERMISSION_DENIED" : 
+                                          error.code === 2 ? "POSITION_UNAVAILABLE" : 
+                                          error.code === 3 ? "TIMEOUT" : "UNKNOWN");
              let msg = "Could not get real-time location.";
              if (error.code === error.PERMISSION_DENIED) {
                msg = "Please allow location access for live updates.";
@@ -92,7 +97,7 @@ export default function ClientMapWrapper() {
         }
       );
     } else {
-       console.error('[Geolocation] Not supported.');
+       console.log('[Geolocation] Not supported by this browser.');
        setErrorMsg("Geolocation is not supported by your browser.");
     }
 
@@ -136,7 +141,7 @@ export default function ClientMapWrapper() {
     );
 
     if (rpcError) {
-      console.error("[findNearestToiletsRoute] RPC Error:", rpcError);
+      console.log("[findNearestToiletsRoute] RPC Error:", rpcError);
       setErrorMsg("Could not find nearby toilets. Please try again.");
       setIsLoading(false);
       return;

@@ -14,7 +14,14 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
 // --- Configuration ---
 // How many toilets to process in each database query batch
-const DB_QUERY_BATCH_SIZE = 100; 
+const DB_QUERY_BATCH_SIZE = 100;
+
+// How many toilets to process in each Google API batch
+const GOOGLE_API_BATCH_SIZE = 10;
+
+// Delay between Google API batches (in milliseconds)
+const GOOGLE_API_DELAY = 1000; // 1 second
+
 // Delay between external API calls (in milliseconds) to respect rate limits
 const API_CALL_DELAY_MS = 1000; // IMPORTANT: Minimum 1000 for Nominatim
 
@@ -110,15 +117,14 @@ async function enrichAddresses() {
     
     // Fetch a batch of toilets where address is null or maybe too short
     const { data: toilets, error: fetchError } = await supabase
-      .from('toilets')
-      .select('id, lat, lng, address') // Select only needed fields
-      .is('address', null) // Fetch only where address is explicitly NULL
-      // Or: .or('address.is.null,address.lte.10') // Example: Null or short address
-      .range(dbQueryOffset, dbQueryOffset + DB_QUERY_BATCH_SIZE - 1);
+      .from('toilet_location')
+      .select('id, lat, lng, address, city, name')
+      .or('address.is.null,address.eq.""')
+      .range(dbQueryOffset, dbQueryOffset + DB_QUERY_BATCH_SIZE - 1)
+      .order('created_at', { ascending: true });
 
     if (fetchError) {
       console.error('Error fetching toilets from database:', fetchError);
-      keepFetching = false; // Stop if we can't query the DB
       break;
     }
 
@@ -149,7 +155,7 @@ async function enrichAddresses() {
         // Check if there's anything to update
         if (Object.keys(updateData).length > 0) {
             const { error: updateError } = await supabase
-              .from('toilets')
+              .from('toilet_location')
               .update(updateData)
               .eq('id', toilet.id);
 

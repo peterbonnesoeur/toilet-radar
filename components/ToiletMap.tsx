@@ -158,6 +158,111 @@ export default function ToiletMap({ userLocation }: ToiletMapProps) {
   // Define the zoom threshold
   const ZOOM_THRESHOLD = 12; // Adjust as needed
 
+  // Direct table query as absolute last resort
+  const fetchToiletsDirectly = useCallback(async (map: L.Map | null, signal: AbortSignal) => {
+    if (!map || signal.aborted) return;
+
+    const bounds = map.getBounds();
+    console.log('[ToiletMap Direct] Trying direct table query...');
+
+    try {
+      // Try toilet_location table first
+      let { data, error } = await supabase
+        .from('toilet_location')
+        .select('*')
+        .gte('lat', bounds.getSouth())
+        .lte('lat', bounds.getNorth())
+        .gte('lng', bounds.getWest())
+        .lte('lng', bounds.getEast())
+        .limit(1000);
+
+      if (signal.aborted) return;
+
+      if (error || !data || data.length === 0) {
+        console.log('[ToiletMap Direct] toilet_location failed or empty, trying legacy toilets table...');
+        // Try legacy toilets table
+        const result = await supabase
+          .from('toilets')
+          .select('*')
+          .gte('lat', bounds.getSouth())
+          .lte('lat', bounds.getNorth())
+          .gte('lng', bounds.getWest())
+          .lte('lng', bounds.getEast())
+          .limit(1000);
+
+        data = result.data;
+        error = result.error;
+      }
+
+      if (signal.aborted) return;
+
+      if (error) {
+        console.log('[ToiletMap Direct] Direct query error:', error);
+        setIsLoading(false);
+      } else if (data) {
+        console.log(`[ToiletMap Direct] Direct query success: ${data.length} toilets found`);
+        setToilets(data);
+        setIsLoading(false);
+        console.log(`🚽 DIRECT SUCCESS: Map now displaying ${data.length} toilets via direct table query!`);
+      } else {
+        console.log('[ToiletMap Direct] No toilets found in direct query');
+        setIsLoading(false);
+      }
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        console.log('[ToiletMap Direct] Direct query exception:', error);
+        setIsLoading(false);
+      }
+    }
+  }, [supabase]);
+
+  // Fallback fetch function using find_toilets_in_view
+  const fetchToiletsWithFallback = useCallback(async (map: L.Map | null, signal: AbortSignal) => {
+    if (!map || signal.aborted) return;
+
+    const bounds = map.getBounds();
+    const fallbackParams = {
+      min_lat: bounds.getSouth(),
+      min_lng: bounds.getWest(),
+      max_lat: bounds.getNorth(),
+      max_lng: bounds.getEast(),
+      max_results: 1000
+    };
+
+    console.log('[ToiletMap Fallback] Calling find_toilets_in_view with params:', JSON.stringify(fallbackParams));
+
+    try {
+      const { data, error: fallbackError } = await supabase.rpc(
+        'find_toilets_in_view',
+        fallbackParams
+      );
+
+      if (signal.aborted) {
+        console.log('[ToiletMap Fallback] Fetch aborted after RPC call returned.');
+        return;
+      }
+
+      if (fallbackError) {
+        console.log('[ToiletMap Fallback] RPC Error:', fallbackError);
+        // Try direct table query as last resort
+        console.log('[ToiletMap Fallback] Trying direct table query as last resort...');
+        await fetchToiletsDirectly(map, signal);
+      } else if (data) {
+        console.log(`[ToiletMap Fallback] Received ${data.length} toilets.`);
+        setToilets(data);
+        setIsLoading(false);
+        console.log(`🚽 FALLBACK SUCCESS: Map now displaying ${data.length} toilets via find_toilets_in_view!`);
+      }
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        console.log('[ToiletMap Fallback] Unexpected error:', error);
+        // Try direct table query as last resort
+        console.log('[ToiletMap Fallback] Trying direct table query due to exception...');
+        await fetchToiletsDirectly(map, signal);
+      }
+    }
+  }, [supabase, fetchToiletsDirectly]);
+
   // --- V3 Fetch Function (Deterministic Sampling) --- 
   const fetchToiletsV3 = useCallback(async (map: L.Map | null, signal: AbortSignal) => {
     if (!map) return; // Don't fetch if map isn't ready
@@ -174,11 +279,11 @@ export default function ToiletMap({ userLocation }: ToiletMapProps) {
     }
 
     const params = {
-      p_center_lat: center.lat, // Pass map center lat
-      p_center_lng: center.lng, // Pass map center lng
-      p_user_lat: userLocation?.latitude ?? null,
-      p_user_lng: userLocation?.longitude ?? null,
-      p_is_zoomed_in: isZoomedIn,
+      p_center_lat: center.lat, // Add back p_ prefix
+      p_center_lng: center.lng, // Add back p_ prefix
+      p_user_lat: userLocation?.latitude ?? null, // Add back p_ prefix
+      p_user_lng: userLocation?.longitude ?? null, // Add back p_ prefix
+      p_is_zoomed_in: isZoomedIn, // Add back p_ prefix
       result_limit: 1000 
     };
 
@@ -200,20 +305,32 @@ export default function ToiletMap({ userLocation }: ToiletMapProps) {
       }
 
       if (rpcError) {
-           console.error('[ToiletMap V3] Error fetching toilets:', rpcError);
+           console.log('[ToiletMap V3] Error fetching toilets:', rpcError);
+           console.log('[ToiletMap V3] Error details:', JSON.stringify(rpcError, null, 2));
+           console.log('[ToiletMap V3] Error message:', rpcError.message);
+           console.log('[ToiletMap V3] Error code:', rpcError.code);
+           console.log('[ToiletMap V3] Error hint:', rpcError.hint);
+           
+           // Fallback to find_toilets_in_view if v3 function fails
+           console.log('[ToiletMap V3] Attempting fallback to find_toilets_in_view...');
+           await fetchToiletsWithFallback(map, signal);
       } else if (data) {
         console.log(`[ToiletMap V3] Received ${data.length} toilets.`);
         setToilets(data);
+        console.log(`🚽 SUCCESS: Map now displaying ${data.length} toilets!`);
       }
     } catch (error: any) {
         if (error.name !== 'AbortError') { 
             setIsLoading(false); 
-            console.error('[ToiletMap V3] Unexpected error during fetch:', error);
+            console.log('[ToiletMap V3] Unexpected error during fetch:', error);
+            // Try fallback on unexpected errors too
+            console.log('[ToiletMap V3] Attempting fallback due to exception...');
+            await fetchToiletsWithFallback(map, signal);
         } else {
              console.log('[ToiletMap V3] Fetch aborted via catch.');
         }
     }
-  }, [supabase, userLocation]); 
+  }, [supabase, userLocation, fetchToiletsWithFallback]); 
 
   // Debounced fetch, handling AbortController - uses V3 fetch now
   const debouncedFetchToilets = useCallback(
@@ -250,6 +367,11 @@ export default function ToiletMap({ userLocation }: ToiletMapProps) {
 
   // Force re-render of TileLayer when theme changes by using a key
   const tileLayerKey = theme; 
+
+  // Run database test on mount
+  // useEffect(() => {
+  //   testDatabaseConnection();
+  // }, [testDatabaseConnection]);
 
   return (
     <MapContainer 

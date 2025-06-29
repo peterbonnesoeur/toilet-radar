@@ -42,3 +42,11 @@ next-env.d.ts
 .venv
 .env.local
 .python-version
+
+# python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz

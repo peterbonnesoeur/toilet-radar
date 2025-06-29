@@ -7,7 +7,7 @@ from sqlmodel import Session, select
 
 from .models import (
     NearestToiletsParams,
-    Toilet,
+    ToiletLocation,
     ToiletCreate,
     ToiletRead,
     ToiletSearchResult,
@@ -25,13 +25,13 @@ class ToiletService:
     
     def create_toilet(self, toilet_data: ToiletCreate) -> ToiletRead:
         """Create a new toilet."""
-        toilet = Toilet.model_validate(toilet_data)
+        toilet = ToiletLocation.model_validate(toilet_data)
         
         # Update geom field if lat/lng provided
         if toilet_data.lat is not None and toilet_data.lng is not None:
             # Use raw SQL to set the geometry since we're keeping SQL functions
             self.session.execute(
-                text("UPDATE toilets SET geom = ST_SetSRID(ST_MakePoint(:lng, :lat), 4326) WHERE id = :id"),
+                text("UPDATE toilet_location SET geom = ST_SetSRID(ST_MakePoint(:lng, :lat), 4326) WHERE id = :id"),
                 {"lng": toilet_data.lng, "lat": toilet_data.lat, "id": toilet.id}
             )
         
@@ -42,12 +42,12 @@ class ToiletService:
     
     def get_toilet(self, toilet_id: UUID) -> Optional[ToiletRead]:
         """Get a toilet by ID."""
-        toilet = self.session.get(Toilet, toilet_id)
+        toilet = self.session.get(ToiletLocation, toilet_id)
         return ToiletRead.model_validate(toilet) if toilet else None
     
     def update_toilet(self, toilet_id: UUID, toilet_data: ToiletUpdate) -> Optional[ToiletRead]:
         """Update a toilet."""
-        toilet = self.session.get(Toilet, toilet_id)
+        toilet = self.session.get(ToiletLocation, toilet_id)
         if not toilet:
             return None
         
@@ -59,7 +59,7 @@ class ToiletService:
         if 'lat' in update_data or 'lng' in update_data:
             if toilet.lat is not None and toilet.lng is not None:
                 self.session.execute(
-                    text("UPDATE toilets SET geom = ST_SetSRID(ST_MakePoint(:lng, :lat), 4326) WHERE id = :id"),
+                    text("UPDATE toilet_location SET geom = ST_SetSRID(ST_MakePoint(:lng, :lat), 4326) WHERE id = :id"),
                     {"lng": toilet.lng, "lat": toilet.lat, "id": toilet.id}
                 )
         
@@ -69,7 +69,7 @@ class ToiletService:
     
     def delete_toilet(self, toilet_id: UUID) -> bool:
         """Delete a toilet."""
-        toilet = self.session.get(Toilet, toilet_id)
+        toilet = self.session.get(ToiletLocation, toilet_id)
         if not toilet:
             return False
         
@@ -185,13 +185,13 @@ class ToiletService:
     
     def get_all_toilets(self, limit: int = 1000, offset: int = 0) -> List[ToiletRead]:
         """Get all toilets with pagination."""
-        statement = select(Toilet).offset(offset).limit(limit)
+        statement = select(ToiletLocation).offset(offset).limit(limit)
         toilets = self.session.exec(statement).all()
         return [ToiletRead.model_validate(toilet) for toilet in toilets]
     
     def get_toilets_by_country(self, country_code: str, limit: int = 1000) -> List[ToiletRead]:
         """Get toilets by country code."""
-        statement = select(Toilet).where(Toilet.country_code == country_code).limit(limit)
+        statement = select(ToiletLocation).where(ToiletLocation.country_code == country_code).limit(limit)
         toilets = self.session.exec(statement).all()
         return [ToiletRead.model_validate(toilet) for toilet in toilets]
     
@@ -199,7 +199,7 @@ class ToiletService:
         """Bulk create toilets for data import."""
         toilets = []
         for toilet_data in toilets_data:
-            toilet = Toilet.model_validate(toilet_data)
+            toilet = ToiletLocation.model_validate(toilet_data)
             toilets.append(toilet)
         
         self.session.add_all(toilets)
@@ -208,7 +208,7 @@ class ToiletService:
         # Update geometry for all toilets that have lat/lng
         self.session.execute(
             text("""
-                UPDATE toilets 
+                UPDATE toilet_location 
                 SET geom = ST_SetSRID(ST_MakePoint(lng, lat), 4326) 
                 WHERE lng IS NOT NULL AND lat IS NOT NULL AND geom IS NULL
             """)

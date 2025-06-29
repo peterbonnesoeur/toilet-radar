@@ -37,8 +37,30 @@ class ToiletBase(SQLModel):
     country_code: Optional[CountryCode] = Field(default=None)
 
 
+class ToiletLocation(ToiletBase, table=True):
+    """New toilet_location table - primary table for toilet data."""
+    __tablename__ = "toilet_location"
+    __table_args__ = (
+        Index("idx_toilet_location_geom", "geom", postgresql_using="gist"),
+        Index("idx_toilet_location_country_code", "country_code"),
+    )
+    
+    id: UUID = Field(
+        default_factory=uuid4,
+        sa_column=Column("id", PostgresUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    )
+    created_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column("created_at", TIMESTAMP(timezone=True), server_default=text("now()"))
+    )
+    geom: Optional[str] = Field(
+        default=None,
+        sa_column=Column("geom", Geometry("POINT", srid=4326), nullable=True)
+    )
+
+
 class Toilet(ToiletBase, table=True):
-    """Original toilets table."""
+    """Legacy toilets table - kept for backward compatibility."""
     __tablename__ = "toilets"
     
     id: UUID = Field(
@@ -57,29 +79,6 @@ class Toilet(ToiletBase, table=True):
     __table_args__ = (
         Index("toilets_geom_idx", "geom", postgresql_using="gist"),
         Index("idx_toilets_country_code", "country_code"),
-    )
-
-
-class ToiletLocation(ToiletBase, table=True):
-    """New toilet_location table - managed version."""
-    __tablename__ = "toilet_location"
-    __table_args__ = (
-        Index("idx_toilet_location_geom", "geom", postgresql_using="gist"),
-        Index("idx_toilet_location_country_code", "country_code"),
-        {"schema": settings.db_schema}
-    )
-    
-    id: UUID = Field(
-        default_factory=uuid4,
-        sa_column=Column("id", PostgresUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    )
-    created_at: Optional[datetime] = Field(
-        default=None,
-        sa_column=Column("created_at", TIMESTAMP(timezone=True), server_default=text("now()"))
-    )
-    geom: Optional[str] = Field(
-        default=None,
-        sa_column=Column("geom", Geometry("POINT", srid=4326), nullable=True)
     )
 
 
@@ -110,7 +109,7 @@ class ToiletSearchResult(ToiletRead):
 class NearestToiletsParams(SQLModel):
     """Parameters for finding nearest toilets."""
     user_lat: float = Field(description="User latitude")
-    user_lng: float = Field(description="User longitude") 
+    user_lng: float = Field(description="User longitude")
     radius_meters: float = Field(default=20000, description="Search radius in meters")
     result_limit: int = Field(default=3, description="Maximum results to return")
 
