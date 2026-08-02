@@ -1,83 +1,102 @@
-# Supabase Database Documentation for Toilet Radar
+# Supabase Database Reference — Toilet Radar
 
-This document outlines the structure of the Supabase database used for the Toilet Radar application.
+Detailed reference for the Supabase (Postgres + PostGIS) backend. Schema changes are managed exclusively through Alembic migrations in `db/` (see the README's Workflows section); data writes go exclusively through the Node scripts in `scripts/` using the service key.
 
 ## Tables
 
-### `toilets` Table
+### `public.toilet_location`
 
-Stores information about individual public toilet locations.
+The single live table (~57k rows). Stores every public toilet location.
 
-| Column Name  | Type                        | Description                                                                  |
-|--------------|-----------------------------|------------------------------------------------------------------------------|
-| `id`         | `uuid` (Primary Key)        | Unique identifier for the toilet (auto-generated).                           |
-| `name`       | `text`                      | The name or description of the toilet location (e.g., "WC Hauptbahnhof").    |
-| `lat`        | `double precision`          | Latitude coordinate of the toilet.                                           |
-| `lng`        | `double precision`          | Longitude coordinate of the toilet.                                          |
-| `accessible` | `boolean`                   | Indicates if the toilet is wheelchair accessible (`true`/`false`).             |
-| `open_hours` | `text`                      | Text description of the opening hours (e.g., "Mo-So 06:00-23:00", "24 h"). |
-| `address`    | `text`                      | Street address of the toilet location.                                       |
-| `created_at` | `timestamp with time zone`  | Timestamp when the record was created (auto-generated, defaults to `now()`). |
-| `geom`       | `geometry(Point, 4326)`     | PostGIS geometry point representing the toilet's location (used for spatial queries). Uses SRID 4326 (WGS84). |
+| Column | Type | Description |
+|---|---|---|
+| `id` | `uuid` (PK) | Primary key, default `gen_random_uuid()`. |
+| `osm_id` | `bigint` (UNIQUE, nullable) | OpenStreetMap element id. Unique constraint enables idempotent upserts from the OSM import; NULL for legacy rows imported before this column existed. |
+| `name` | `varchar` | Name/description of the location. |
+| `open_hours` | `varchar` | Opening hours text. |
+| `address` | `varchar` | Street address (may be filled by the Nominatim enrichment script). |
+| `type` | `varchar` | Type/category of the toilet. |
+| `status` | `varchar` | Operational status. |
+| `notes` | `varchar` | Free-form notes. |
+| `city` | `varchar` | City name. |
+| `lat` | `double precision` | Latitude (WGS84). |
+| `lng` | `double precision` | Longitude (WGS84). |
+| `accessible` | `boolean` | Wheelchair accessible. |
+| `is_free` | `boolean` | Free to use. |
+| `rating` | `integer` | Rating (unused so far). |
+| `country_code` | `countrycode` enum | One of `CH`, `FR`, `DE`, `IT`, `AT`. |
+| `created_at` | `timestamptz` | Default `now()`. |
+| `geom` | `geometry(Point, 4326)` | PostGIS point. **Maintained automatically** from `lat`/`lng` by the trigger `trigger_update_toilet_location_geom` — never write it directly. |
 
-**Indexes:**
+> The legacy `toilets` table was dropped in migration `c8d5e2f1a4b7`.
 
-*   `toilets_geom_idx`: A GIST spatial index on the `geom` column for efficient location-based querying.
+### Indexes
 
-**Row Level Security (RLS):**
+| Index | Definition | Purpose |
+|---|---|---|
+| `idx_toilet_location_geom` | GIST on `geom` | General spatial queries (bounding box, KNN). |
+| `idx_toilet_location_geog` | GIST on `(geom::geography)` (expression index) | Serves `ST_DWithin` distance searches in meters. |
+| `idx_toilet_location_country_code` | btree on `country_code` | Country filtering. |
+| `idx_toilet_location_country_id` | btree on `(country_code, id)` | Deterministic-by-id pagination within a country. |
+| `toilet_location_osm_id_key` | unique on `osm_id` | Idempotent OSM upserts. |
 
-*   Enabled.
-*   A policy `Public read access` allows anyone (`USING (true)`) to `SELECT` data.
-*   *(Optional)* An `INSERT` policy might be added later for authenticated user submissions.
+### Row Level Security
 
----
+RLS is **enabled** on `toilet_location`:
 
-## Database Functions (RPC)
+*   Policy `"Public read access"` grants `SELECT` only, to the `anon` and `authenticated` roles.
+*   All write grants (`INSERT`/`UPDATE`/`DELETE`) are **revoked** from `anon` and `authenticated`.
+*   Writes happen only through the Supabase **service key** (ingest scripts in `scripts/`) or direct Postgres connections (Alembic migrations).
+
+## RPC Functions
+
+All three functions are `plpgsql`, marked `STABLE`, have `search_path` pinned, and enforce server-side caps on their parameters so clients cannot request unbounded result sets.
 
 ### `find_nearest_toilets(user_lat, user_lng, radius_meters, result_limit)`
 
-Finds the nearest toilets to a given user location within a specified radius.
+Returns the nearest toilets to a point, ordered by distance.
 
-**Parameters:**
+| Parameter | Type | Default | Cap |
+|---|---|---|---|
+| `user_lat` | `double precision` | — | |
+| `user_lng` | `double precision` | — | |
+| `radius_meters` | `double precision` | `20000` | `100000` |
+| `result_limit` | `integer` | `3` | `50` |
 
-| Parameter        | Type               | Default | Description                                       |
-|------------------|--------------------|---------|---------------------------------------------------| 
-| `user_lat`       | `double precision` | *N/A*   | Latitude of the user's current location.          |
-| `user_lng`       | `double precision` | *N/A*   | Longitude of the user's current location.         |
-| `radius_meters`  | `double precision` | `20000` | Search radius in meters (defaults to 20km).       |
-| `result_limit`   | `integer`          | `3`     | Maximum number of nearest toilets to return (defaults to 3). |
+Returns toilet rows plus a `distance` column in **meters**, nearest first. Uses `ST_DWithin` on `geom::geography`, served by `idx_toilet_location_geog`.
 
-**Returns:**
+### `find_toilets_in_view(min_lat, min_lng, max_lat, max_lng, max_results)`
 
-A table containing rows with the following columns for each toilet found within the radius, ordered by distance (nearest first):
+Returns toilets inside a bounding box (the current map viewport).
 
-| Column    | Type               | Description                                                |
-|-----------|--------------------|------------------------------------------------------------|
-| `id`      | `uuid`             | Unique identifier of the toilet.                           |
-| `name`    | `text`             | Name/description of the toilet.                            |
-| `lat`     | `double precision` | Latitude of the toilet.                                    |
-| `lng`     | `double precision` | Longitude of the toilet.                                   |
-| `address` | `text`             | Address of the toilet.                                     |
-| `accessible` | `boolean`        | Whether the toilet is wheelchair accessible.               |
-| `is_free` | `boolean`          | Whether the toilet is free to use (null if unknown).       |
-| `type`    | `text`             | The type or category of the toilet.                        |
-| `status`  | `text`             | Operational status (e.g., 'in Betrieb', 'geschlossen').    |
-| `notes`   | `text`             | Additional notes or comments.                              |
-| `city`    | `text`             | The city the toilet is located in.                         |
-| `open_hours` | `text`           | Opening hours information.                                 |
-| `distance`| `double precision` | Calculated distance in **meters** from the user's location. |
-| `created_at`| `timestamp with time zone` | Timestamp when the record was created.                    |
+| Parameter | Type | Default | Cap |
+|---|---|---|---|
+| `min_lat`, `min_lng`, `max_lat`, `max_lng` | `double precision` | — | |
+| `max_results` | `integer` | `2000` | `2000` |
 
-**Usage Example (from Client-Side JS):**
+### `get_toilets_deterministic_v3(p_center_lat, p_center_lng, p_user_lat, p_user_lng, p_is_zoomed_in, result_limit)`
+
+Country-aware, deterministic marker selection for the map:
+
+1.  Infers the relevant country from the 5 toilets nearest the map center.
+2.  When `p_is_zoomed_in` is true, returns the rows nearest to the center.
+3.  When zoomed out, returns a deterministic-by-id selection for that country (served by `idx_toilet_location_country_id`), so the same view always shows the same markers.
+
+`result_limit` is capped at `1000`.
+
+## Usage from client-side JS
 
 ```javascript
-const { data, error } = await supabase.rpc(
-  'find_nearest_toilets',
-  {
-    user_lat: position.coords.latitude,
-    user_lng: position.coords.longitude,
-    radius_meters: 20000, // Optional, defaults to 20000
-    result_limit: 3       // Optional, defaults to 3
-  }
-);
-``` 
+const { data, error } = await supabase.rpc('find_nearest_toilets', {
+  user_lat: position.coords.latitude,
+  user_lng: position.coords.longitude,
+  radius_meters: 20000, // optional, default 20000, capped at 100000
+  result_limit: 3,      // optional, default 3, capped at 50
+});
+```
+
+The anon key is sufficient — RLS allows public reads, and the RPCs are read-only (`STABLE`).
+
+## Keep-alive
+
+`vercel.json` defines a daily cron that requests `/api/health`. That route performs a 1-row read from the database via the anon key, preventing Supabase's free tier from pausing the project for inactivity.
