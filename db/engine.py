@@ -13,9 +13,12 @@ connect_args = {
     "connect_timeout": 60,
 }
 
-# Add schema to search_path if not using default 'public' schema
+# Add schema to search_path if not using default 'public' schema.
+# public stays on the path: all current tables live there, and a search_path
+# of only a custom schema would make every unqualified query fail.
+# (db_schema is validated against ^[a-z_][a-z0-9_]*$ in config.py.)
 if settings.db_schema and settings.db_schema != 'public':
-    connect_args["options"] = f"-c search_path={settings.db_schema}"
+    connect_args["options"] = f"-c search_path={settings.db_schema},public"
 
 engine = create_engine(
     settings.database_url,
