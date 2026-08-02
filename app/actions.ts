@@ -40,10 +40,14 @@ export const signUpAction = async (formData: FormData) => {
 };
 
 export const signInAction = async (formData: FormData) => {
-  const email = formData.get("email") as string;
-  const password = formData.get("password") as string;
-  const supabase = await createClient();
+  const email = formData.get("email")?.toString();
+  const password = formData.get("password")?.toString();
 
+  if (!email || !password) {
+    return encodedRedirect("error", "/sign-in", "Email and password are required");
+  }
+
+  const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({
     email,
     password,
@@ -53,7 +57,7 @@ export const signInAction = async (formData: FormData) => {
     return encodedRedirect("error", "/sign-in", error.message);
   }
 
-  return redirect("/protected");
+  return redirect("/");
 };
 
 export const forgotPasswordAction = async (formData: FormData) => {
@@ -79,7 +83,8 @@ export const forgotPasswordAction = async (formData: FormData) => {
     );
   }
 
-  if (callbackUrl) {
+  // Only allow same-origin path redirects ("/x" but not "//evil" or absolute URLs).
+  if (callbackUrl && /^\/(?![/\\])/.test(callbackUrl)) {
     return redirect(callbackUrl);
   }
 
@@ -93,19 +98,27 @@ export const forgotPasswordAction = async (formData: FormData) => {
 export const resetPasswordAction = async (formData: FormData) => {
   const supabase = await createClient();
 
-  const password = formData.get("password") as string;
-  const confirmPassword = formData.get("confirmPassword") as string;
+  const password = formData.get("password")?.toString();
+  const confirmPassword = formData.get("confirmPassword")?.toString();
 
   if (!password || !confirmPassword) {
-    encodedRedirect(
+    return encodedRedirect(
       "error",
       "/protected/reset-password",
       "Password and confirm password are required",
     );
   }
 
+  if (password.length < 8) {
+    return encodedRedirect(
+      "error",
+      "/protected/reset-password",
+      "Password must be at least 8 characters",
+    );
+  }
+
   if (password !== confirmPassword) {
-    encodedRedirect(
+    return encodedRedirect(
       "error",
       "/protected/reset-password",
       "Passwords do not match",
@@ -117,14 +130,14 @@ export const resetPasswordAction = async (formData: FormData) => {
   });
 
   if (error) {
-    encodedRedirect(
+    return encodedRedirect(
       "error",
       "/protected/reset-password",
       "Password update failed",
     );
   }
 
-  encodedRedirect("success", "/protected/reset-password", "Password updated");
+  return encodedRedirect("success", "/protected/reset-password", "Password updated");
 };
 
 export const signOutAction = async () => {
