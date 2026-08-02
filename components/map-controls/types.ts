@@ -1,6 +1,10 @@
 // Types for map controls
-import { UserLocation } from '@/lib/services/geolocation';
 import { ControlPosition } from '@/lib/managers/ui-layout';
+
+export type UserLocation = {
+  latitude: number;
+  longitude: number;
+};
 
 export interface MapControlProps {
   id: string;
@@ -17,4 +21,4 @@ export interface LocationSearchProps extends MapControlProps {
 export interface RecenterControlProps extends MapControlProps {
   userLocation: UserLocation | null;
   onRecenter?: () => void;
-} 
+}

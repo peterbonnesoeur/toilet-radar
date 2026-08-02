@@ -24,21 +24,23 @@ export interface LayoutResult {
 export class UILayoutManager {
   private static controls: Map<string, ControlConfig> = new Map();
   private static readonly BASE_Z_INDEX = 1000;
-  private static readonly CONTROL_SPACING = 10; // Base spacing between controls
+  private static readonly CONTROL_SPACING = 10;
+  // 44px minimum touch target (Apple HIG / WCAG); a little more on mobile.
+  private static readonly CONTROL_SIZE = 44;
+  // Keeps bottom-anchored controls clear of the Leaflet attribution bar.
+  private static readonly ATTRIBUTION_CLEARANCE = 24;
 
   static registerControl(config: ControlConfig): void {
-    console.log(`[UILayoutManager] Registering control: ${config.id}`);
     this.controls.set(config.id, config);
   }
 
   static unregisterControl(id: string): void {
-    console.log(`[UILayoutManager] Unregistering control: ${id}`);
     this.controls.delete(id);
   }
 
   static getScreenSize(): ScreenSize {
     if (typeof window === 'undefined') return 'desktop';
-    
+
     const width = window.innerWidth;
     if (width < 768) return 'mobile';
     if (width < 1024) return 'tablet';
@@ -48,7 +50,6 @@ export class UILayoutManager {
   static getControlLayout(controlId: string): LayoutResult {
     const control = this.controls.get(controlId);
     if (!control) {
-      console.warn(`[UILayoutManager] Control not found: ${controlId}`);
       return {
         position: 'top-right',
         style: { top: '10px', right: '10px' },
@@ -58,24 +59,22 @@ export class UILayoutManager {
 
     const screenSize = this.getScreenSize();
     const isMobile = screenSize === 'mobile';
-    
-    // Use mobile position if specified and on mobile
+
     const position = isMobile && control.mobilePosition ? control.mobilePosition : control.position;
-    
-    // Calculate position based on other controls in same corner
+
     const sameCornerControls = Array.from(this.controls.values())
       .filter(c => {
         const cPos = isMobile && c.mobilePosition ? c.mobilePosition : c.position;
         return cPos === position && c.id !== controlId;
       })
-      .sort((a, b) => b.priority - a.priority); // Higher priority first
+      .sort((a, b) => b.priority - a.priority);
 
     const controlIndex = sameCornerControls.findIndex(c => c.priority < control.priority);
     const offset = controlIndex >= 0 ? controlIndex : sameCornerControls.length;
 
     return {
       position,
-      style: this.calculateStyle(position, offset, control.spacing, isMobile),
+      style: this.calculateStyle(position, offset, control.spacing),
       zIndex: this.BASE_Z_INDEX + control.priority
     };
   }
@@ -83,18 +82,15 @@ export class UILayoutManager {
   private static calculateStyle(
     position: ControlPosition,
     offset: number,
-    spacing?: ControlConfig['spacing'],
-    isMobile: boolean = false
+    spacing?: ControlConfig['spacing']
   ): React.CSSProperties {
     const baseSpacing = this.CONTROL_SPACING;
-    const controlSize = isMobile ? 40 : 44; // Estimated control size
-    const offsetDistance = offset * (controlSize + baseSpacing);
+    const offsetDistance = offset * (this.CONTROL_SIZE + baseSpacing);
 
-    // Default spacing
     const defaultSpacing = {
       top: baseSpacing,
       right: baseSpacing,
-      bottom: baseSpacing,
+      bottom: baseSpacing + this.ATTRIBUTION_CLEARANCE,
       left: baseSpacing
     };
 
@@ -145,44 +141,4 @@ export class UILayoutManager {
         };
     }
   }
-
-  static getAvailablePositions(excludeControlId?: string): ControlPosition[] {
-    const allPositions: ControlPosition[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
-    const occupiedPositions = new Set<ControlPosition>();
-
-    this.controls.forEach((control, id) => {
-      if (id !== excludeControlId) {
-        const screenSize = this.getScreenSize();
-        const isMobile = screenSize === 'mobile';
-        const position = isMobile && control.mobilePosition ? control.mobilePosition : control.position;
-        occupiedPositions.add(position);
-      }
-    });
-
-    return allPositions.filter(pos => !occupiedPositions.has(pos));
-  }
-
-  static suggestBestPosition(priority: number): ControlPosition {
-    const available = this.getAvailablePositions();
-    const screenSize = this.getScreenSize();
-    
-    // Priority order based on screen size
-    const preferredOrder: ControlPosition[] = screenSize === 'mobile' 
-      ? ['bottom-right', 'bottom-left', 'top-right', 'top-left']
-      : ['top-right', 'top-left', 'bottom-right', 'bottom-left'];
-
-    for (const position of preferredOrder) {
-      if (available.includes(position)) {
-        return position;
-      }
-    }
-
-    // If all positions are taken, use top-right (will stack)
-    return 'top-right';
-  }
-
-  static clear(): void {
-    console.log('[UILayoutManager] Clearing all controls');
-    this.controls.clear();
-  }
-} 
+}

@@ -1,14 +1,13 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useMap } from 'react-leaflet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, MapPin } from 'lucide-react';
+import { Search, MapPin, X } from 'lucide-react';
 import { GeocodingService, GeocodingResult } from '@/lib/services/geocoding';
-import { UserLocation } from '@/lib/services/geolocation';
 import { MapControlWrapper } from './MapControlWrapper';
-import { LocationSearchProps } from './types';
+import { LocationSearchProps, UserLocation } from './types';
 import debounce from 'lodash.debounce';
 
 export function LocationSearchControl({
@@ -23,8 +22,10 @@ export function LocationSearchControl({
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<GeocodingResult[]>([]);
+  const [searchError, setSearchError] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const debouncedSearch = useCallback(
     debounce(async (query: string) => {
@@ -35,14 +36,15 @@ export function LocationSearchControl({
       }
 
       setIsSearching(true);
+      setSearchError(false);
       try {
         const results = await GeocodingService.searchLocation(query);
         setSearchResults(results);
         setShowResults(true);
       } catch (error) {
-        console.error('[LocationSearchControl] Search failed:', error);
         setSearchResults([]);
-        setShowResults(false);
+        setSearchError(true);
+        setShowResults(true);
       } finally {
         setIsSearching(false);
       }
@@ -50,10 +52,20 @@ export function LocationSearchControl({
     []
   );
 
+  useEffect(() => () => debouncedSearch.cancel(), [debouncedSearch]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchQuery(value);
     debouncedSearch(value);
+  };
+
+  const closeSearch = () => {
+    setIsExpanded(false);
+    setSearchQuery('');
+    setShowResults(false);
+    setSearchResults([]);
+    setSearchError(false);
   };
 
   const selectLocation = (result: GeocodingResult) => {
@@ -70,20 +82,28 @@ export function LocationSearchControl({
       longitude: result.lng
     };
     onLocationSelect?.(userLocation);
-
-    setSearchQuery('');
-    setShowResults(false);
-    setSearchResults([]);
+    closeSearch();
   };
 
-  const toggleExpanded = () => {
-    setIsExpanded(!isExpanded);
-    if (!isExpanded) {
-      setSearchQuery('');
-      setShowResults(false);
-      setSearchResults([]);
-    }
-  };
+  // Close on Escape and on clicks outside the control.
+  useEffect(() => {
+    if (!isExpanded) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeSearch();
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        closeSearch();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [isExpanded]);
 
   return (
     <MapControlWrapper
@@ -93,44 +113,51 @@ export function LocationSearchControl({
       priority={priority}
       className={`bg-background rounded-md shadow-lg ${className}`}
     >
-      <div className="relative">
+      <div className="relative" ref={containerRef}>
         {!isExpanded && (
           <Button
             variant="ghost"
             size="icon"
-            className="w-10 h-10 rounded-md"
-            onClick={toggleExpanded}
+            className="w-11 h-11 rounded-md"
+            onClick={() => setIsExpanded(true)}
+            aria-label="Search for a location"
             title="Search for a location"
           >
-            <Search className="w-4 h-4" />
+            <Search className="w-5 h-5" aria-hidden="true" />
           </Button>
         )}
 
         {isExpanded && (
-          <div className="flex items-center gap-1 p-1">
-            <div className="relative flex-1 min-w-[200px] sm:min-w-[280px]">
+          <div className="flex items-center gap-1 p-1 max-w-[calc(100vw-2rem)]">
+            <div className="relative flex-1 min-w-[180px] sm:min-w-[280px]">
               <div className="relative">
-                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
                 <Input
                   type="text"
                   placeholder="Search location..."
+                  aria-label="Search for a location"
                   value={searchQuery}
                   onChange={handleInputChange}
-                  className="pl-8 pr-4 text-sm h-8"
-                  disabled={isSearching}
+                  className="pl-8 pr-4 text-sm h-9"
                   autoFocus
                 />
               </div>
 
               {showResults && searchResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-y-auto z-20">
+                <div
+                  role="listbox"
+                  aria-label="Location results"
+                  className="absolute top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-y-auto z-20"
+                >
                   {searchResults.map((result, index) => (
                     <button
                       key={index}
+                      role="option"
+                      aria-selected={false}
                       onClick={() => selectLocation(result)}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-muted border-b last:border-b-0 flex items-start gap-2"
+                      className="w-full text-left px-3 py-2.5 text-sm hover:bg-muted border-b last:border-b-0 flex items-start gap-2"
                     >
-                      <MapPin className="w-3 h-3 mt-0.5 text-muted-foreground flex-shrink-0" />
+                      <MapPin className="w-3 h-3 mt-0.5 text-muted-foreground flex-shrink-0" aria-hidden="true" />
                       <div className="flex-1 min-w-0">
                         <div className="font-medium truncate text-xs sm:text-sm">
                           {result.display_name}
@@ -148,15 +175,17 @@ export function LocationSearchControl({
 
               {showResults && searchResults.length === 0 && !isSearching && searchQuery.length > 2 && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg p-3 z-20">
-                  <div className="text-sm text-muted-foreground text-center">
-                    No locations found for "{searchQuery}"
+                  <div role="status" className="text-sm text-muted-foreground text-center">
+                    {searchError
+                      ? 'Search failed — check your connection and try again.'
+                      : `No locations found for "${searchQuery}"`}
                   </div>
                 </div>
               )}
 
               {isSearching && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-background border rounded-md shadow-lg p-3 z-20">
-                  <div className="text-sm text-muted-foreground text-center">
+                  <div role="status" className="text-sm text-muted-foreground text-center">
                     Searching...
                   </div>
                 </div>
@@ -166,15 +195,16 @@ export function LocationSearchControl({
             <Button
               variant="ghost"
               size="icon"
-              className="w-8 h-8 rounded-md flex-shrink-0"
-              onClick={toggleExpanded}
+              className="w-11 h-11 rounded-md flex-shrink-0"
+              onClick={closeSearch}
+              aria-label="Close search"
               title="Close search"
             >
-              <span className="text-lg leading-none">×</span>
+              <X className="w-5 h-5" aria-hidden="true" />
             </Button>
           </div>
         )}
       </div>
     </MapControlWrapper>
   );
-} 
+}

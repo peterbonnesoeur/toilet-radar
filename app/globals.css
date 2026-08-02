@@ -70,51 +70,6 @@
   }
 }
 
-/* Dark mode specific overrides for map pins */
-.dark .leaflet-marker-icon.map-pin {
-  background-color: #404040; /* Dark grey/charcoal */
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); /* Slightly stronger shadow */
-}
-.dark .leaflet-marker-icon.map-pin.selected-pin {
-   background-color: #555555; /* Slightly lighter dark grey */
-   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
-}
-
-.dark .leaflet-marker-icon.map-pin.user-pin {
-  background-color: #2c3e50; 
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
-}
-
-
-
-/* Add styles for map pins (default/light mode) */
-.leaflet-marker-icon.map-pin {
-  background-color: #f5f5dc; /* Beige background */
-  border-radius: 8px; /* Rounded corners */
-  padding: 3px; /* Padding around the icon image */
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); /* Subtle shadow */
-  /* Override Leaflet's default transparent background */
-  background-clip: padding-box; /* Ensures background doesn't extend under border if one was added */
-}
-
-/* Ensure the image inside the pin container fits well */
-.leaflet-marker-icon.map-pin img {
-  display: block; /* Remove any extra space below the image */
-  max-width: 100%; 
-  height: auto;
-}
-
-/* Light mode: Slightly darker background for the selected pin */
-.leaflet-marker-icon.map-pin.selected-pin {
-   background-color: #ebebcD; /* Slightly darker beige */
-   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-}
-
-
-.leaflet-marker-icon.map-pin.user-pin {
-  /*background-color:  #ebebcD; /* Slightly darker beige */
-}
-
 /* === Leaflet Popup Theming === */
 
 /* Style popup background and text using theme variables */
@@ -133,7 +88,36 @@
   margin: 12px 18px; /* Adjust padding inside the wrapper */
   line-height: 1.4;
   font-size: 0.875rem; /* Match text-sm */
-}x
+}
+
+/* Popup content built by ToiletClusterLayer — theme-aware so it stays
+   readable in dark mode. */
+.toilet-popup h3 {
+  font-weight: 700;
+  font-size: 1rem;
+  margin-bottom: 4px;
+}
+.toilet-popup p {
+  font-size: 0.75rem;
+  color: hsl(var(--muted-foreground));
+  margin: 2px 0;
+}
+.toilet-popup p strong {
+  color: hsl(var(--popover-foreground));
+}
+.toilet-popup a {
+  display: block;
+  font-size: 0.75rem;
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  margin: 4px 0;
+  word-break: break-word;
+}
+.toilet-popup a.toilet-popup-directions {
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin-top: 8px;
+}
 
 /* Remove default Leaflet border on tip */
 .leaflet-popup-tip-container {

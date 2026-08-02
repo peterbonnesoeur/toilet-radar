@@ -19,11 +19,8 @@ export function RecenterControl({
   const map = useMap();
 
   const handleRecenter = () => {
-    console.log('[RecenterControl] Manual recenter requested');
-    
     if (userLocation && map && map.getContainer && map.getContainer()) {
       try {
-        console.log(`[RecenterControl] Setting view to: [${userLocation.latitude}, ${userLocation.longitude}]`);
         map.setView([userLocation.latitude, userLocation.longitude], 15);
         onRecenter?.();
       } catch (error) {
@@ -32,7 +29,6 @@ export function RecenterControl({
     }
   };
 
-  // Don't render if no user location
   if (!userLocation) {
     return null;
   }
@@ -48,12 +44,13 @@ export function RecenterControl({
       <Button
         variant="ghost"
         size="icon"
-        className="w-10 h-10 rounded-md"
+        className="w-11 h-11 rounded-md"
         onClick={handleRecenter}
+        aria-label="Recenter map on your location"
         title="Recenter map on your location"
       >
-        <Crosshair className="w-4 h-4" />
+        <Crosshair className="w-5 h-5" aria-hidden="true" />
       </Button>
     </MapControlWrapper>
   );
-} 
+}
