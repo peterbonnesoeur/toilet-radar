@@ -46,6 +46,14 @@ in priority order.
 - **A11 — install nudge**: add-to-home-screen prompt after 2nd visit +
   manifest shortcut "Nearest toilet now".
 
+## Planned: all-Europe coverage + OSM sync
+
+Full plan with measured storage/count numbers, the mark-and-sweep design for
+OSM deletions, and an execution checklist: see `docs/EUROPE_EXPANSION.md`.
+Prerequisite: run the legacy dedupe first (the 57k current rows vs ~5k real
+Swiss OSM toilets implies mass duplicates from the old non-idempotent
+imports).
+
 ## The big one — new amenity kinds (faucets, bike pumps)
 
 Deferred by choice; design is settled:
