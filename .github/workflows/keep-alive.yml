@@ -1,0 +1,27 @@
+name: Supabase keep-alive
+
+# Backup for the Vercel cron in vercel.json: Supabase free tier pauses
+# projects after ~7 days of database inactivity, so /api/health performs a
+# real 1-row DB read. Two independent schedulers make an accidental pause
+# very unlikely.
+on:
+  schedule:
+    - cron: '0 9 */3 * *' # every 3 days at 09:00 UTC
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint (performs a real DB read)
+        run: |
+          set -e
+          for url in "https://toilet-radar.ch/api/health" "https://toilet-radar.vercel.app/api/health"; do
+            echo "Pinging $url"
+            if curl -fsS --max-time 30 "$url"; then
+              echo " — OK"
+              exit 0
+            fi
+          done
+          echo "All health endpoints failed"
+          exit 1
