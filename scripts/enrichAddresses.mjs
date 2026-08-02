@@ -1,191 +1,144 @@
 import { createClient } from '@supabase/supabase-js';
-import axios from 'axios'; // Using axios for HTTP requests
+import axios from 'axios';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 // --- Setup ---
+// Environment selection mirrors the Python side (db/config.py):
+//   APP_ENV=local (default) -> .env.local, dev -> .env.dev, prd -> .env.prd
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.resolve(__dirname, '../.env.local') });
+const APP_ENV = (process.env.APP_ENV || 'local').toLowerCase();
+const ENV_FILES = { local: '.env.local', dev: '.env.dev', prd: '.env.prd' };
+if (!ENV_FILES[APP_ENV]) {
+  console.error(`APP_ENV must be one of ${Object.keys(ENV_FILES).join(', ')}, got '${APP_ENV}'`);
+  process.exit(1);
+}
+dotenv.config({ path: path.resolve(__dirname, '..', ENV_FILES[APP_ENV]) });
+console.log(`Environment: ${APP_ENV} (${ENV_FILES[APP_ENV]})`);
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
 // --- Configuration ---
-// How many toilets to process in each database query batch
 const DB_QUERY_BATCH_SIZE = 100;
 
-// How many toilets to process in each Google API batch
-const GOOGLE_API_BATCH_SIZE = 10;
+// Delay between Nominatim calls. Their usage policy requires >= 1000ms.
+const API_CALL_DELAY_MS = 1000;
 
-// Delay between Google API batches (in milliseconds)
-const GOOGLE_API_DELAY = 1000; // 1 second
-
-// Delay between external API calls (in milliseconds) to respect rate limits
-const API_CALL_DELAY_MS = 1000; // IMPORTANT: Minimum 1000 for Nominatim
-
-// Define a User-Agent string for Nominatim - PLEASE MODIFY THIS
-const NOMINATIM_USER_AGENT = 'ToiletRadarApp/1.0 (github.com/your-repo; your-email@example.com)'; // Replace with your actual info
+const NOMINATIM_USER_AGENT =
+  'ToiletRadar/1.0 (github.com/peterbonnesoeur/toilet-radar; maxime.bonn@gmail.com)';
 
 if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('Error: Make sure NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_KEY are set.');
+  console.error(`Error: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in ${ENV_FILES[APP_ENV]}.`);
   process.exit(1);
 }
 
-
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// --- Reverse Geocoding Function (Nominatim Implementation) ---
+// --- Reverse Geocoding (Nominatim) ---
 /**
- * Calls Nominatim reverse geocoding service to get address from lat/lng.
- * @param {number} lat Latitude
- * @param {number} lng Longitude
+ * @param {number} lat
+ * @param {number} lng
  * @returns {Promise<{address: string | null, city: string | null} | null>}
- *          Object with address/city or null if failed/not found.
  */
 async function reverseGeocode(lat, lng) {
-  console.log(`-> Nominatim Geocoding: ${lat}, ${lng}`);
-  const nominatimUrl = 'https://nominatim.openstreetmap.org/reverse';
-  const params = {
-    lat: lat,
-    lon: lng,
-    format: 'json',
-    addressdetails: 1, // Request detailed address components
-    'accept-language': 'en', // Optional: Prefer English results
-     zoom: 18 // Level of detail (18 is typically building/street level)
-  };
-
   try {
-    const response = await axios.get(nominatimUrl, {
-      params: params,
-      headers: {
-        'User-Agent': NOMINATIM_USER_AGENT // **MANDATORY for Nominatim**
+    const response = await axios.get('https://nominatim.openstreetmap.org/reverse', {
+      params: {
+        lat,
+        lon: lng,
+        format: 'json',
+        addressdetails: 1,
+        'accept-language': 'en',
+        zoom: 18,
       },
-      timeout: 10000 // Set a timeout (10 seconds)
+      headers: { 'User-Agent': NOMINATIM_USER_AGENT },
+      timeout: 10000,
     });
 
-    if (response.data && response.data.address) {
-      const addressData = response.data.address;
-      // Use display_name as the primary address string
-      const fullAddress = response.data.display_name || null;
+    const fullAddress = response.data?.display_name || null;
+    const addressData = response.data?.address;
+    const city = addressData
+      ? addressData.city || addressData.town || addressData.village || addressData.county || null
+      : null;
 
-      // Attempt to extract city - priority: city, town, village, county
-      const city = addressData.city || addressData.town || addressData.village || addressData.county || null;
-
-      console.log(`   Nominatim Success: Found address for ${lat}, ${lng}`);
-      return { address: fullAddress, city: city };
-    } else {
-      console.log(`   Nominatim Success: No address details found for ${lat}, ${lng}`);
-      // Even if address details are missing, display_name might exist
-      if (response.data.display_name) {
-         return { address: response.data.display_name, city: null };
-      }
-      return null; // No results found
-    }
+    if (!fullAddress && !city) return null;
+    return { address: fullAddress, city };
   } catch (error) {
-     if (axios.isAxiosError(error)) {
-        console.error(`   Nominatim Error (${error.response?.status}) for ${lat}, ${lng}:`, error.message);
-        // Log response data if available for debugging
-        if(error.response?.data) {
-            console.error('   Nominatim Response Data:', JSON.stringify(error.response.data).substring(0, 200) + '...');
-        }
-     } else {
-        console.error(`   Nominatim Error for ${lat}, ${lng}:`, error.message);
-     }
-     // Don't overwhelm logs on persistent errors like 429 Too Many Requests
-     if (error.response?.status !== 429) {
-         // Handle specific errors if needed (e.g., 429 means slow down further)
-     }
-    return null; // Return null on failure
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    console.error(`   Nominatim error${status ? ` (${status})` : ''} for ${lat}, ${lng}: ${error.message}`);
+    return null;
   }
 }
 
 // --- Main Enrichment Function ---
 async function enrichAddresses() {
-  console.log('Starting address enrichment process (Nominatim)...');
-  console.warn(`Using Nominatim with User-Agent: ${NOMINATIM_USER_AGENT}`);
-  console.warn(`API Call Delay set to: ${API_CALL_DELAY_MS}ms (MUST be >= 1000ms)`);
+  console.log('Starting address enrichment (Nominatim, 1 req/s)...');
 
   let totalProcessed = 0;
   let totalUpdated = 0;
-  let dbQueryOffset = 0;
-  let keepFetching = true;
+  // Keyset pagination on id: rows updated mid-run drop out of the filter,
+  // which would make offset pagination skip rows. The id cursor also
+  // guarantees progress past rows whose geocoding fails.
+  let lastId = null;
 
-  while (keepFetching) {
-    console.log(`Fetching batch of toilets starting from offset ${dbQueryOffset}...`);
-    
-    // Fetch a batch of toilets where address is null or maybe too short
-    const { data: toilets, error: fetchError } = await supabase
+  for (;;) {
+    let query = supabase
       .from('toilet_location')
-      .select('id, lat, lng, address, city, name')
+      .select('id, lat, lng, name')
       .or('address.is.null,address.eq.""')
-      .range(dbQueryOffset, dbQueryOffset + DB_QUERY_BATCH_SIZE - 1)
-      .order('created_at', { ascending: true });
+      .order('id', { ascending: true })
+      .limit(DB_QUERY_BATCH_SIZE);
+    if (lastId) query = query.gt('id', lastId);
+
+    const { data: toilets, error: fetchError } = await query;
 
     if (fetchError) {
-      console.error('Error fetching toilets from database:', fetchError);
-      break;
+      console.error('Error fetching toilets from database:', fetchError.message);
+      process.exit(1);
     }
-
     if (!toilets || toilets.length === 0) {
-      console.log('No more toilets found needing address enrichment.');
-      keepFetching = false; // Stop if no more toilets are found
+      console.log('No more toilets needing address enrichment.');
       break;
     }
 
-    console.log(`Processing ${toilets.length} toilets in this batch...`);
+    console.log(`Processing ${toilets.length} toilets (cursor: ${lastId ?? 'start'})...`);
+    lastId = toilets[toilets.length - 1].id;
 
     for (const toilet of toilets) {
       totalProcessed++;
-      if (!toilet.lat || !toilet.lng) {
-        console.log(`Skipping toilet ID ${toilet.id} - missing coordinates.`);
-        continue;
-      }
+      if (toilet.lat == null || toilet.lng == null) continue;
 
-      // Call the reverse geocoding function
-      const geocodeResult = await reverseGeocode(toilet.lat, toilet.lng);
+      const result = await reverseGeocode(toilet.lat, toilet.lng);
 
-      // If successful, update the database record
-      if (geocodeResult && (geocodeResult.address || geocodeResult.city)) {
+      if (result) {
         const updateData = {};
-        if (geocodeResult.address) updateData.address = geocodeResult.address;
-        if (geocodeResult.city) updateData.city = geocodeResult.city;
-        
-        // Check if there's anything to update
-        if (Object.keys(updateData).length > 0) {
-            const { error: updateError } = await supabase
-              .from('toilet_location')
-              .update(updateData)
-              .eq('id', toilet.id);
+        if (result.address) updateData.address = result.address;
+        if (result.city) updateData.city = result.city;
 
-            if (updateError) {
-              console.error(`Failed to update toilet ID ${toilet.id}:`, updateError.message);
-            } else {
-              totalUpdated++;
-            }
+        const { error: updateError } = await supabase
+          .from('toilet_location')
+          .update(updateData)
+          .eq('id', toilet.id);
+
+        if (updateError) {
+          console.error(`Failed to update toilet ID ${toilet.id}:`, updateError.message);
         } else {
-             console.log(`Skipping update for toilet ID ${toilet.id} - no valid address/city returned.`);
+          totalUpdated++;
         }
-      } else {
-         console.log(`Skipping update for toilet ID ${toilet.id} - geocoding failed or no address found.`);
       }
 
-      // Wait before the next API call to respect rate limits
-      await new Promise(resolve => setTimeout(resolve, API_CALL_DELAY_MS)); 
+      await new Promise(resolve => setTimeout(resolve, API_CALL_DELAY_MS));
     }
 
-    // Prepare for the next database query batch
-    dbQueryOffset += toilets.length; // Advance offset by the number actually processed
-    
-    // Safety break if we fetched less than the batch size (likely the end)
-    if (toilets.length < DB_QUERY_BATCH_SIZE) {
-        keepFetching = false;
-    }
+    console.log(`Progress: processed ${totalProcessed}, updated ${totalUpdated}.`);
   }
 
   console.log(`Finished enrichment. Processed: ${totalProcessed}, Updated: ${totalUpdated}.`);
 }
 
 // --- Run ---
-enrichAddresses(); 
+// Usage: APP_ENV=prd node scripts/enrichAddresses.mjs
+enrichAddresses();

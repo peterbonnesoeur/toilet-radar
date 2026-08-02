@@ -1,58 +1,68 @@
 import { createClient } from '@supabase/supabase-js';
-import axios from 'axios'; // Or use node-fetch if you prefer
+import axios from 'axios';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 // --- Setup ---
+// Environment selection mirrors the Python side (db/config.py):
+//   APP_ENV=local (default) -> .env.local
+//   APP_ENV=dev             -> .env.dev
+//   APP_ENV=prd             -> .env.prd
+// Production is never targeted implicitly.
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.resolve(__dirname, '../.env.local') });
+const APP_ENV = (process.env.APP_ENV || 'local').toLowerCase();
+const ENV_FILES = { local: '.env.local', dev: '.env.dev', prd: '.env.prd' };
+if (!ENV_FILES[APP_ENV]) {
+  console.error(`APP_ENV must be one of ${Object.keys(ENV_FILES).join(', ')}, got '${APP_ENV}'`);
+  process.exit(1);
+}
+dotenv.config({ path: path.resolve(__dirname, '..', ENV_FILES[APP_ENV]) });
+console.log(`Environment: ${APP_ENV} (${ENV_FILES[APP_ENV]})`);
 
 // --- Configuration ---
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
-// Consider using a different Overpass instance if needed, check https://wiki.openstreetmap.org/wiki/Overpass_API#Public_Overpass_API_instances
 const overpassUrl = 'https://overpass-api.de/api/interpreter';
 
-// --- Argument Parsing ---
-// Get country code from command line arguments (e.g., node populateFromOSM.mjs --country=DE)
-const args = process.argv.slice(2); // Remove 'node' and script path
-const countryArg = args.find(arg => arg.startsWith('--country='));
-let countryCode = 'CH'; // Default to Switzerland
-if (countryArg) {
-    countryCode = countryArg.split('=')[1]?.toUpperCase();
-    if (!countryCode || countryCode.length !== 2) {
-        console.error("Invalid country code format. Please use '--country=XX' where XX is the 2-letter ISO 3166-1 code.");
-        process.exit(1);
-    }
-    console.log(`Using country code: ${countryCode}`);
-} else {
-    console.log('No country code provided via --country argument. Defaulting to Switzerland (CH).');
-}
-// --- End Argument Parsing ---
+// Must match the countrycode enum in the database.
+const SUPPORTED_COUNTRIES = ['CH', 'FR', 'DE', 'IT', 'AT'];
 
+// --- Argument Parsing ---
+const args = process.argv.slice(2);
+const countryArg = args.find(arg => arg.startsWith('--country='));
+let countryCode = 'CH';
+if (countryArg) {
+  countryCode = countryArg.split('=')[1]?.toUpperCase();
+}
+if (!SUPPORTED_COUNTRIES.includes(countryCode)) {
+  console.error(
+    `Unsupported country '${countryCode}'. Supported: ${SUPPORTED_COUNTRIES.join(', ')} ` +
+    `(the database countrycode enum must be extended first for new countries).`
+  );
+  process.exit(1);
+}
+console.log(`Country: ${countryCode}`);
 
 if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('Error: Make sure NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_KEY are set in your .env.local file.');
+  console.error(`Error: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in ${ENV_FILES[APP_ENV]}.`);
   process.exit(1);
 }
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // --- Overpass Query ---
-// Fetches all nodes tagged as amenity=toilets within the specified country
-// Increase timeout if needed, especially for large areas
 const overpassQuery = `
-[out:json][timeout:240]; /* Output JSON, increased timeout */
-area["ISO3166-1"="${countryCode}"][admin_level=2]->.searchArea; /* Define the country area */
+[out:json][timeout:240];
+area["ISO3166-1"="${countryCode}"][admin_level=2]->.searchArea;
 (
   node["amenity"="toilets"](area.searchArea);
 );
-out geom meta; /* geom for lat/lon, meta for timestamp/version */
+out geom meta;
 `;
 
-// --- Helper: Map OSM tags to your existing DB schema ---
+// --- Helper: Map OSM tags to the toilet_location schema ---
 function mapOsmToDb(element) {
   const tags = element.tags || {};
   const lat = element.lat;
@@ -63,166 +73,107 @@ function mapOsmToDb(element) {
     return null;
   }
 
-  // Map wheelchair tag to accessible (boolean)
   let accessible = null;
   if (tags.wheelchair === 'yes') accessible = true;
   else if (tags.wheelchair === 'no') accessible = false;
-  // 'limited' or missing tag results in null
 
-  // Map fee tag to is_free (boolean)
   let is_free = null;
   if (tags.fee === 'no') is_free = true;
   else if (tags.fee === 'yes') is_free = false;
-  // missing tag results in null. Could also check 'charge' tag if needed.
 
-  // --- Address Mapping --- 
-  // Attempt to construct a full address string for the 'address' column
   const addressStreet = tags['addr:street'];
   const addressHN = tags['addr:housenumber'];
   const addressPostcode = tags['addr:postcode'];
   const addressCity = tags['addr:city'];
   const addressFull = [addressStreet, addressHN, addressPostcode, addressCity]
-                       .filter(Boolean).join(' ').trim() || null;
-                       
-  // Assign to dedicated columns if available
-  const addressColumnValue = addressFull;
-  const cityColumnValue = addressCity || null;
-  // --- End Address Mapping ---
+    .filter(Boolean).join(' ').trim() || null;
 
-  // --- Notes Construction (include address parts here too) ---
   const notesParts = [];
   if (tags.description) notesParts.push(`Description: ${tags.description}`);
   if (tags.note) notesParts.push(`Note: ${tags.note}`);
   if (tags.charge) notesParts.push(`Charge: ${tags.charge}`);
   if (tags.operator) notesParts.push(`Operator: ${tags.operator}`);
-  // Add individual address tags to notes if they exist, as a fallback
-  if (addressStreet && !addressFull) notesParts.push(`Street: ${addressStreet}`);
-  if (addressHN && !addressFull) notesParts.push(`HN: ${addressHN}`);
-  if (addressPostcode && !addressFull) notesParts.push(`Postcode: ${addressPostcode}`);
-  if (addressCity && !addressFull) notesParts.push(`City: ${addressCity}`); // Repeat city in notes if full address couldn't be formed
   const notes = notesParts.join('; ') || null;
-  // --- End Notes Construction ---
-
-  // Map type (example: use toilets:position or default)
-  const type = tags['toilets:position'] ? `Position: ${tags['toilets:position']}` : 'Unknown';
-
-  // Map status (example: check for disused tag)
-  const status = tags['disused:amenity'] === 'toilets' ? 'Disused' : 'in Betrieb';
 
   return {
-    // id: will be generated by Supabase by default
-    // Consider adding osm_id: element.id here if you modify the table for upserts
-    name: tags.name || 'Public Toilet', // Default name if missing
-    lat: lat,
-    lng: lng,
-    // geom: Will be generated by trigger or explicitly below
-    accessible: accessible,
+    osm_id: element.id,
+    name: tags.name || 'Public Toilet',
+    lat,
+    lng,
+    // geom is computed by the BEFORE INSERT/UPDATE trigger from lat/lng.
+    accessible,
     open_hours: tags.opening_hours || null,
-    address: addressColumnValue, // Use the potentially null full address
-    is_free: is_free,
-    type: type,
-    status: status,
-    notes: notes, // Notes now contain fallback address info
-    city: cityColumnValue, // Use the potentially null city
-    // created_at: Will be set by Supabase default
+    address: addressFull,
+    is_free,
+    type: tags['toilets:position'] ? `Position: ${tags['toilets:position']}` : 'Unknown',
+    status: tags['disused:amenity'] === 'toilets' ? 'Disused' : 'in Betrieb',
+    notes,
+    city: addressCity || null,
+    country_code: countryCode,
   };
 }
-
 
 // --- Main Function ---
 async function populateFromOsm() {
   console.log(`Querying Overpass API (${overpassUrl}) for country ${countryCode}...`);
   try {
-    const response = await axios.post(overpassUrl, `data=${encodeURIComponent(overpassQuery)}`, { // Ensure data is properly encoded
+    const response = await axios.post(overpassUrl, `data=${encodeURIComponent(overpassQuery)}`, {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     });
 
     const elements = response.data.elements;
     if (!elements) {
-        console.error("No 'elements' array found in Overpass response:", response.data);
-        return;
+      console.error("No 'elements' array found in Overpass response:", response.data);
+      process.exit(1);
     }
     console.log(`Received ${elements.length} elements from Overpass.`);
 
-    const toiletsToInsert = elements
-      .filter(el => el.type === 'node') // Process only nodes
+    const toilets = elements
+      .filter(el => el.type === 'node')
       .map(mapOsmToDb)
-      .filter(Boolean); // Filter out nulls (skipped elements)
+      .filter(Boolean);
 
-    console.log(`Prepared ${toiletsToInsert.length} valid toilets for insertion.`);
+    console.log(`Prepared ${toilets.length} toilets for upsert.`);
+    if (toilets.length === 0) return;
 
-    if (toiletsToInsert.length === 0) {
-      console.log('No valid toilets found to insert.');
-      return;
-    }
-
-    // --- Insertion Logic ---
-    // IMPORTANT: This uses simple INSERT. If you run this script multiple times,
-    // it WILL create duplicate entries unless you clear the table first
-    // or modify the table and script to use UPSERT based on an osm_id column.
-    
-    console.warn("Using simple INSERT. Ensure the 'toilet_location' table is empty or duplicates are acceptable/handled.");
-    console.log('Attempting to insert data into Supabase...');
-    
-    const batchSize = 100; // Adjust as needed
-    let insertedCount = 0;
+    // Idempotent: rows are matched on osm_id, so re-running refreshes
+    // existing entries instead of duplicating them.
+    const batchSize = 500;
+    let upsertedCount = 0;
     let errorCount = 0;
+    const totalBatches = Math.ceil(toilets.length / batchSize);
 
-    for (let i = 0; i < toiletsToInsert.length; i += batchSize) {
-        const batchData = toiletsToInsert.slice(i, i + batchSize);
-        
-        // Explicitly add the geom field for insertion if you don't have a DB trigger
-        const batchWithGeom = batchData.map(toilet => {
-            const { lat, lng, ...rest } = toilet;
-            // Ensure lat/lng are valid numbers before creating POINT
-            if (typeof lat === 'number' && typeof lng === 'number') {
-                return {
-                    ...rest,
-                    lat: lat,
-                    lng: lng,
-                    country_code: countryCode,
-                    geom: `SRID=4326;POINT(${lng} ${lat})` // Standard PostGIS EWKT format with SRID
-                };
-            } else {
-                console.warn(`Skipping toilet in batch due to invalid lat/lng: ${toilet.name || toilet.osm_id}`);
-                return null; // Skip this entry
-            }
-        }).filter(Boolean); // Remove nulls
+    for (let i = 0; i < toilets.length; i += batchSize) {
+      const batch = toilets.slice(i, i + batchSize);
+      const batchNo = Math.floor(i / batchSize) + 1;
+      console.log(`Upserting batch ${batchNo}/${totalBatches} (${batch.length} toilets)...`);
 
-        if (batchWithGeom.length === 0) {
-            console.log(`Skipping batch ${Math.floor(i / batchSize) + 1} as all entries had invalid coordinates.`);
-            continue;
-        }
+      const { error } = await supabase
+        .from('toilet_location')
+        .upsert(batch, { onConflict: 'osm_id' });
 
-        console.log(`Inserting batch ${Math.floor(i / batchSize) + 1} of ${Math.ceil(toiletsToInsert.length / batchSize)} (${batchWithGeom.length} toilets)...`);
-
-        const { error } = await supabase.from('toilet_location').insert(batchWithGeom);
-
-        if (error) {
-            console.error(`Error inserting batch ${Math.floor(i / batchSize) + 1}:`, error.message);
-            errorCount += batchWithGeom.length; // Approximate error count
-        } else {
-            insertedCount += batchWithGeom.length;
-            // console.log(`Successfully inserted batch ${Math.floor(i / batchSize) + 1}`);
-        }
+      if (error) {
+        console.error(`Error upserting batch ${batchNo}:`, error.message);
+        errorCount += batch.length;
+      } else {
+        upsertedCount += batch.length;
+      }
     }
 
-    console.log(`Finished populating from OSM. Inserted: ${insertedCount}, Errors/Skipped: ${errorCount + (toiletsToInsert.length - insertedCount - errorCount)}`);
-
+    console.log(`Finished. Upserted: ${upsertedCount}, Failed: ${errorCount}.`);
+    if (errorCount > 0) process.exit(1);
   } catch (error) {
     if (axios.isAxiosError(error)) {
-        // Log more detailed Axios error info
-        console.error('Axios error fetching data from Overpass:');
-        console.error('Status:', error.response?.status);
-        console.error('Headers:', error.response?.headers);
-        console.error('Data:', error.response?.data);
+      console.error('Axios error fetching data from Overpass:');
+      console.error('Status:', error.response?.status);
+      console.error('Data:', error.response?.data);
     } else {
-        console.error('An unexpected error occurred during the process:', error);
+      console.error('An unexpected error occurred during the process:', error);
     }
     process.exit(1);
   }
 }
 
 // --- Run ---
-// Example usage: node scripts/populateFromOSM.mjs --country=FR
-populateFromOsm(); 
+// Usage: APP_ENV=prd node scripts/populateFromOSM.mjs --country=CH
+populateFromOsm();
